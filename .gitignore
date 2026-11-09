@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+*.tgz
+
+# Environment files. .env.example stays tracked.
+.env
+.env.*
+!.env.example
+
+# IDE / editors
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local notes and settings
+CLAUDE.local.md
+.claude/settings.local.json
