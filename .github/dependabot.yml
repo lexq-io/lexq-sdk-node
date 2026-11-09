@@ -1,0 +1,38 @@
+# Actions are pinned to commit SHAs and npm packages to package-lock.json, so neither
+# changes on its own. Dependabot proposes new versions as pull requests.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    # Skip versions released less than 7 days ago, so a compromised release
+    # has a week to be found and pulled before it is proposed here.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    # Minor and patch updates share one pull request; each major update opens its own.
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+    # A major update replaces the range in package.json instead of widening it to
+    # cover both majors.
+    versioning-strategy: increase
+    groups:
+      npm:
+        update-types: [minor, patch]
+    ignore:
+      # The type definitions come from the oldest supported Node.js line. They move
+      # only when the engines field in package.json does, which is a breaking change.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
