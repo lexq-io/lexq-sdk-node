@@ -81,14 +81,16 @@ is sent. The constructor throws, and a call's promise rejects. In TypeScript, a 
 without a fallback also fails to compile.
 
 Everything else uses the fallback, including two failures that happen before anything
-is sent. One is a fact that JSON cannot carry as written, such as `NaN`, `Infinity`, or
-a list with a missing element. The other is an idempotency key that is empty or that a
+is sent. One is a fact the client will not write: a value that JSON cannot carry as
+written, such as `NaN`, `Infinity`, or a list with a missing element, or a value nested
+deeper than the client's limit. The other is an idempotency key that is empty or that a
 header cannot carry. For both, the fallback receives a `TypeError`.
 
 The error the fallback receives names the reason: an open breaker, the deadline, a
 failed connection, or a LexQ error with its status and `errorCode`. It also lists every
-attempt and carries the idempotency key the call used, so a caller can repeat the call
-later without running the decision twice.
+attempt and carries the idempotency key the call used. When LexQ finished the call's
+decision and it succeeded, repeating the call with that key returns the decision instead
+of running a second one.
 
 ### Contract tests
 
@@ -110,6 +112,9 @@ default values belong in the code next to their tests, not in this file.
   that keeps its status.
 - A body that is not JSON is a failure that keeps its status. A load balancer's 502
   page or the 404 from a wrong host is HTML.
+- Read at most a fixed number of bytes. A larger body is a failure that keeps its
+  status, even when it carries a decision, so one response cannot fill the caller's
+  memory.
 - A LexQ response has two branches. `result: "SUCCESS"` carries `data`, and
   `result: "ERROR"` carries `errorCode` and `message`. The key is `errorCode`, not
   `code`, and reading the wrong key fails silently: every error arrives without a
@@ -137,8 +142,11 @@ default values belong in the code next to their tests, not in this file.
   amount can carry 34 significant digits or more. A JavaScript number holds 15
   reliably, and the package cannot tell an amount from a count. Parse responses so
   that no number loses digits, and give callers a way to send an exact amount as a
-  JSON number. A string such as `"150000"` is not a number to LexQ. The first
-  implementation pull request settles how exact values reach the caller, and a
+  JSON number. A string such as `"150000"` is not one: a fact whose type is NUMBER
+  rejects it with `P-060`. Every number in a decision reaches the caller as a
+  `Decimal`, which keeps the text LexQ wrote and has no implicit number value, so
+  arithmetic on it throws instead of rounding. A caller sends an exact amount as a
+  `Decimal` or a bigint, and a `Decimal` from one decision goes back out unchanged. A
   contract test sends and reads back an amount with more than 34 significant digits.
 
 ### Sending a request
@@ -153,6 +161,6 @@ default values belong in the code next to their tests, not in this file.
 - Never shorten a caller's idempotency key. LexQ accepts up to 255 characters and
   answers a longer key with `I-003` rather than cutting it. Keys are stored with the
   execution, so tell callers to hash long IDs and keep personal data out of them.
-- Send `trafficKey` in `context`. A/B routing reads `context.trafficKey`. In `facts`
+- Send `trafficKey` in `contexts`. A/B routing reads `contexts.trafficKey`. In `facts`
   it is ignored, and the test version receives no traffic. The package does not move
-  it, so the documentation for `context` must say where it goes.
+  it, so the documentation for `contexts` must say where it goes.
