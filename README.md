@@ -24,6 +24,17 @@ Until the first release, the clients in
 and [When LexQ Is Slow or Unavailable](https://docs.lexq.io/api/execution#when-lexq-is-slow-or-unavailable)
 covers what to do when a call fails.
 
+## Development
+
+The package supports Node.js 22.12 or later. [.nvmrc](.nvmrc) names the version to
+develop with.
+
+```sh
+npm ci
+npm run typecheck
+npm test
+```
+
 ## Maintenance
 
 I'm Sanghyun Park, and I maintain this package. I write most of it with AI coding
