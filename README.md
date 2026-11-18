@@ -80,10 +80,10 @@ npm test
 
 `contracts/lexq-manifest.sdk.json` holds the LexQ limits and error codes the client relies
 on, taken from LexQ's contract manifest, and `src/contract.ts` is generated from it. To
-regenerate both from a copy of the manifest:
+regenerate both from a copy of the manifest kept outside this repository:
 
 ```sh
-node scripts/gen-contract.mjs path/to/lexq-manifest.json
+node scripts/gen-contract.mjs ../lexq-manifest.json
 ```
 
 ## Maintenance

@@ -8,9 +8,11 @@
  * because the client would rely on a value LexQ no longer states.
  *
  * The manifest is wider than what this repository publishes, so it is never committed.
- * Regenerating needs a copy of it, at contracts/lexq-manifest.json, which .gitignore keeps
- * out, or at the path given as the argument. The subset holds only values that the client
- * or its documentation already states, so committing it publishes nothing new.
+ * Regenerating needs a copy of it, at the path given as the argument or at
+ * contracts/lexq-manifest.json. Keep the copy outside the repository; .gitignore keeps out
+ * any file named lexq-manifest.json in case one lands inside. The subset holds only values
+ * that the client or its documentation already states, so committing it publishes nothing
+ * new.
  *
  * Usage: node scripts/gen-contract.mjs [manifest]   regenerate both files
  *        node scripts/gen-contract.mjs --check      check that the two files agree
