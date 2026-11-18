@@ -24,6 +24,49 @@ Until the first release, the clients in
 and [When LexQ Is Slow or Unavailable](https://docs.lexq.io/api/execution#when-lexq-is-slow-or-unavailable)
 covers what to do when a call fails.
 
+## Usage
+
+Run the client on a server. It refuses to start in a browser, where the API key would
+reach every visitor.
+
+```ts
+import { LexqClient } from "@lexq/sdk";
+
+// Create one client and reuse it: the circuit breaker belongs to it.
+const lexq = new LexqClient({ apiKey: process.env.LEXQ_API_KEY! });
+
+const result = await lexq.execute(groupId, {
+  facts: { paymentAmount: 150000, customerTier: "VIP" },
+  // A/B routing reads trafficKey from contexts. In facts it is ignored.
+  contexts: { trafficKey: customerId },
+  idempotencyKey: `checkout-${orderId}`,
+  // What your service does when the call fails: here, no discount.
+  fallback: () => ({ discount: 0 }),
+});
+
+if (result.source === "lexq") {
+  // result.facts, result.isBlocked, and result.traceId, which you store with the order.
+} else {
+  // result.value is what the fallback returned, and result.error says why.
+}
+```
+
+Every number in a decision is a `Decimal`, because LexQ calculates in decimal and an
+amount can have more digits than a JavaScript number holds. Read it with `toString()`,
+for example to pass it to a decimal library, or with `toNumber()` when the nearest
+JavaScript number is enough. Arithmetic on a `Decimal` throws instead of rounding. To
+send an exact amount, pass `new Decimal("150000.50")` or a bigint. A string such as
+`"150000"` stays a string, and a fact whose type is NUMBER rejects it with `P-060`.
+
+By default a call has a 15-second deadline and 10 seconds per attempt, and the circuit
+breaker opens for 10 seconds after 5 failed calls in a row. Set `timeoutMs` lower for a
+request that cannot wait that long. LexQ still finishes and bills a decision that the
+deadline cut off. If it succeeded, repeating the call with the `idempotencyKey` from the
+error returns it instead of running it again.
+[Retrying a Failed Call](https://docs.lexq.io/api/execution#retrying-a-failed-call) says
+what a repeat gets otherwise. The options are documented on `ClientOptions` and
+`ExecuteOptions` in the type definitions.
+
 ## Development
 
 The package supports Node.js 22.12 or later. [.nvmrc](.nvmrc) names the version to

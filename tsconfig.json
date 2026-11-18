@@ -12,7 +12,8 @@
     "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
+    "rewriteRelativeImportExtensions": true,
     "noEmit": true
   },
-  "include": ["test"]
+  "include": ["src", "test"]
 }
