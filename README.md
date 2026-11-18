@@ -78,6 +78,14 @@ npm run typecheck
 npm test
 ```
 
+`contracts/lexq-manifest.sdk.json` holds the LexQ limits and error codes the client relies
+on, taken from LexQ's contract manifest, and `src/contract.ts` is generated from it. To
+regenerate both from a copy of the manifest kept outside this repository:
+
+```sh
+node scripts/gen-contract.mjs ../lexq-manifest.json
+```
+
 ## Maintenance
 
 I'm Sanghyun Park, and I maintain this package. I write most of it with AI coding

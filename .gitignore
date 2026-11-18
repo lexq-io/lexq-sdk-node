@@ -6,6 +6,11 @@ dist/
 coverage/
 *.tgz
 
+# LexQ's full contract manifest, wherever a copy is placed. It holds more than this
+# repository publishes, and scripts/gen-contract.mjs reads it to write
+# contracts/lexq-manifest.sdk.json.
+lexq-manifest.json
+
 # Environment files. .env.example stays tracked.
 .env
 .env.*
