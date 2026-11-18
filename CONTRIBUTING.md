@@ -11,6 +11,11 @@ is in [CONTRACT.md](CONTRACT.md).
 - Response types list only the fields LexQ sends, taken from the Execution API
   reference and a real response. The package's own result may add derived fields,
   such as `isBlocked`.
+- LexQ's own limits and error codes that the client relies on, such as how deep a
+  request body may nest, live in `contracts/lexq-manifest.sdk.json`, and
+  `src/contract.ts` is generated from it. Change them by regenerating both from LexQ's
+  contract manifest, never by hand. `npm test` fails when the two files disagree or
+  the documentation states another value.
 - Add a runtime dependency only with a reason in the pull request. Every dependency
   ships into every customer's server.
 - Log nothing by default. Errors carry the status, `errorCode`, LexQ's `message`, and

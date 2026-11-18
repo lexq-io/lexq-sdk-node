@@ -1,3 +1,4 @@
+import { MAX_REQUEST_NESTING_DEPTH } from "./contract.ts";
 import { Decimal } from "./decimal.ts";
 
 // JSON.isRawJSON and the source text JSON.parse passes to a reviver are in Node.js 21
@@ -6,11 +7,12 @@ const json = JSON as JSON & { isRawJSON(value: unknown): value is { readonly raw
 type Reviver = (key: string, value: unknown) => unknown;
 
 /**
- * How many levels the client lets the request body nest. The body is the first level and
- * `facts` the second, so `{"facts":{"tags":["a"]}}` nests three. Facts are usually flat,
- * and the limit keeps a runaway structure from exhausting the stack.
+ * How many levels the client lets the request body nest. It is LexQ's own limit, so a body
+ * that LexQ would answer with `400 C-012` goes to the fallback without being sent. The body
+ * is the first level and `facts` the second, so `{"facts":{"tags":["a"]}}` nests three. The
+ * limit also keeps a runaway structure from exhausting the stack.
  */
-export const MAX_DEPTH = 32;
+export const MAX_DEPTH = MAX_REQUEST_NESTING_DEPTH;
 
 /** The level of a value in `facts` or `contexts`: inside the body and that object. */
 const ENTRY_LEVEL = 3;

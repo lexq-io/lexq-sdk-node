@@ -38,11 +38,11 @@ test("a body nested exactly as deep as the limit is written, and one level more 
   assert.equal(levels(JSON.parse(deepest)), MAX_DEPTH);
   assert.throws(() => encodeBody({ deep: nested(MAX_DEPTH - 1) }, undefined), {
     name: "TypeError",
-    message: /^facts\.deep\S* would nest the request body more than 32 levels deep$/,
+    message: new RegExp(`^facts\\.deep\\S* would nest the request body more than ${MAX_DEPTH} levels deep$`),
   });
   assert.throws(() => encodeBody({}, { deep: nested(MAX_DEPTH - 1) }), {
     name: "TypeError",
-    message: /^contexts\.deep\S* would nest the request body more than 32 levels deep$/,
+    message: new RegExp(`^contexts\\.deep\\S* would nest the request body more than ${MAX_DEPTH} levels deep$`),
   });
 });
 
