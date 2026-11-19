@@ -10,7 +10,11 @@ import { MAX_DEPTH } from "../src/json.ts";
 const ROOT = new URL("../", import.meta.url);
 
 interface Subset {
-  readonly constants: { readonly MAX_REQUEST_NESTING_DEPTH: number; readonly IDEMPOTENCY_KEY_MAX_LENGTH: number };
+  readonly constants: {
+    readonly MAX_REQUEST_NESTING_DEPTH: number;
+    readonly IDEMPOTENCY_KEY_MAX_LENGTH: number;
+    readonly REPLAY_RETENTION_HOURS: number;
+  };
   readonly errorCodes: readonly { readonly code: string; readonly httpStatus: number }[];
 }
 
@@ -38,6 +42,13 @@ test("the client lets a body nest as deep as the published limit, and no deeper"
 test("the documentation states the idempotency key limit in the published subset", async () => {
   const sentence = `accepts up to ${(await readSubset()).constants.IDEMPOTENCY_KEY_MAX_LENGTH} characters`;
   for (const path of ["src/types.ts", "CONTRACT.md"]) {
+    assert.ok((await readProse(path)).includes(sentence), `${path} does not say "${sentence}"`);
+  }
+});
+
+test("the documentation states how long a repeat gets the same decision, as the published subset says", async () => {
+  const sentence = `within ${(await readSubset()).constants.REPLAY_RETENTION_HOURS} hours`;
+  for (const path of ["README.md", "CONTRACT.md", "src/errors.ts"]) {
     assert.ok((await readProse(path)).includes(sentence), `${path} does not say "${sentence}"`);
   }
 });

@@ -61,8 +61,8 @@ send an exact amount, pass `new Decimal("150000.50")` or a bigint. A string such
 By default a call has a 15-second deadline and 10 seconds per attempt, and the circuit
 breaker opens for 10 seconds after 5 failed calls in a row. Set `timeoutMs` lower for a
 request that cannot wait that long. LexQ still finishes and bills a decision that the
-deadline cut off. If it succeeded, repeating the call with the `idempotencyKey` from the
-error returns it instead of running it again.
+deadline cut off. If it succeeded, repeating the call within 24 hours with the
+`idempotencyKey` from the error returns it instead of running it again.
 [Retrying a Failed Call](https://docs.lexq.io/api/execution#retrying-a-failed-call) says
 what a repeat gets otherwise. The options are documented on `ClientOptions` and
 `ExecuteOptions` in the type definitions.

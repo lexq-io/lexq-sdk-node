@@ -40,7 +40,7 @@ or a single call can turn them off.
 | `429` | Yes, after `Retry-After` if the response has one, or else after a longer wait, while the deadline allows. A request rejected with `429` did not use its key |
 | `409` with `I-002` | Yes, with backoff, while the deadline allows. A request with this key is still running or failed less than a minute ago |
 | `409` with `I-001` | Never. The key is spent, and only a new key works |
-| `403` with `B-008` | Never. The monthly execution quota is used up, and every call fails the same way until it resets or the plan is upgraded |
+| `403` with `B-008` | Never. The monthly execution quota is used up, and every new execution fails the same way until it resets or the plan is upgraded |
 | Anything else | No |
 
 If this package adds batch execution, it must never retry a batch automatically.
@@ -89,8 +89,8 @@ header cannot carry. For both, the fallback receives a `TypeError`.
 The error the fallback receives names the reason: an open breaker, the deadline, a
 failed connection, or a LexQ error with its status and `errorCode`. It also lists every
 attempt and carries the idempotency key the call used. When LexQ finished the call's
-decision and it succeeded, repeating the call with that key returns the decision instead
-of running a second one.
+decision and it succeeded, repeating the call with that key within 24 hours returns the
+decision instead of running a second one.
 
 ### Contract tests
 

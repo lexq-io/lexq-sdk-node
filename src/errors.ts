@@ -27,8 +27,8 @@ export interface Attempt {
  *
  * It never carries the API key, the facts, or a response body. Keep `idempotencyKey`
  * to repeat the call: if LexQ finished the decision and it succeeded, a repeat with that
- * key returns it instead of running it again. What a repeat gets otherwise:
- * https://docs.lexq.io/api/execution#retrying-a-failed-call
+ * key within 24 hours returns it instead of running it again. What a repeat gets
+ * otherwise: https://docs.lexq.io/api/execution#retrying-a-failed-call
  */
 export class LexqError extends Error {
   override readonly name = "LexqError";
