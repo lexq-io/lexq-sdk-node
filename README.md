@@ -1,10 +1,7 @@
 # LexQ Node.js SDK
 
-The Node.js client for the [LexQ](https://lexq.io) execution API, to be published as
+The Node.js client for the [LexQ](https://lexq.io) execution API, published on npm as
 `@lexq/sdk`.
-
-**In development. There is nothing to install yet.** The `@lexq/sdk` package on npm
-is a name reservation until the first release.
 
 Your backend sends facts, such as an order's amount, and LexQ evaluates your rules and
 returns the decision. This package makes that call, with four safeguards:
@@ -19,12 +16,14 @@ returns the decision. This package makes that call, with four safeguards:
 [CONTRACT.md](CONTRACT.md) spells out each safeguard and how the package reads LexQ's
 responses.
 
-Until the first release, the clients in
-[lexq-examples](https://github.com/lexq-io/lexq-examples) show how to call the API,
-and [When LexQ Is Slow or Unavailable](https://docs.lexq.io/api/execution#when-lexq-is-slow-or-unavailable)
-covers what to do when a call fails.
-
 ## Usage
+
+```sh
+npm install @lexq/sdk
+```
+
+The package supports Node.js 22.12 or later. It is an ES module, and CommonJS code can
+load it with `require()` as well.
 
 Run the client on a server. It refuses to start in a browser, where the API key would
 reach every visitor.
@@ -71,14 +70,16 @@ what a repeat gets otherwise. The options are documented on `ClientOptions` and
 
 ## Development
 
-The package supports Node.js 22.12 or later. [.nvmrc](.nvmrc) names the version to
-develop with.
+[.nvmrc](.nvmrc) names the Node.js version to develop with.
 
 ```sh
 npm ci
 npm run typecheck
 npm test
+npm run build
 ```
+
+`npm run build` compiles `src` into `dist/`, which is what npm publishes.
 
 `contracts/lexq-manifest.sdk.json` holds the LexQ limits and error codes the client relies
 on, taken from LexQ's contract manifest, and `src/contract.ts` is generated from it. To
