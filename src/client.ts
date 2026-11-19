@@ -2,14 +2,17 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isRecord, sendAttempt, type AttemptOutcome, type PreparedRequest } from "./attempt.ts";
 import { CircuitBreaker, DEFAULT_COOLDOWN_MS, DEFAULT_THRESHOLD } from "./breaker.ts";
+import { Decimal } from "./decimal.ts";
 import { LexqError, type Attempt } from "./errors.ts";
 import { encodeBody } from "./json.ts";
 import { MAX_ATTEMPTS, backoff, inProgressWait, rateLimitWait } from "./retry.ts";
 import type {
   ClientOptions,
   DecisionResult,
+  DecisionTrace,
   ExecuteOptions,
   ExecuteResult,
+  ExecutionTrace,
   Facts,
   FallbackResult,
 } from "./types.ts";
@@ -184,14 +187,14 @@ export class LexqClient {
       const durationMs = Math.round(performance.now() - startedAt);
       if (outcome.kind === "decision") {
         const decision = toDecision(outcome.data, idempotencyKey);
-        if (decision !== undefined) {
+        if (typeof decision !== "string") {
           return decision;
         }
         outcome = {
           kind: "response",
           status: outcome.status,
           errorCode: undefined,
-          message: `LexQ answered ${outcome.status} with result SUCCESS but a decision without a traceId or with facts that are not objects`,
+          message: `LexQ answered ${outcome.status} with result SUCCESS but a decision ${decision}`,
           retryAfter: null,
         };
       }
@@ -290,34 +293,83 @@ function connectionMessage(cause: unknown): string {
   return typeof code === "string" ? `Could not reach LexQ: ${code}` : "Could not reach LexQ";
 }
 
-function toDecision(data: Readonly<Record<string, unknown>>, idempotencyKey: string): DecisionResult | undefined {
-  const { traceId } = data;
+/**
+ * LexQ's decision with every field LexQ returned, or what is wrong with it. The trace entries
+ * are passed on as LexQ wrote them: the client computes nothing from them, so it checks only
+ * that each list holds objects.
+ */
+function toDecision(data: Readonly<Record<string, unknown>>, idempotencyKey: string): DecisionResult | string {
+  const { traceId, executedAt, totalProcessingTimeMs } = data;
+  if (typeof traceId !== "string" || traceId === "") {
+    return "without a traceId";
+  }
+  if (typeof executedAt !== "string" || executedAt === "") {
+    return "without executedAt";
+  }
+  if (!(totalProcessingTimeMs instanceof Decimal)) {
+    return "whose totalProcessingTimeMs is not a number";
+  }
   const inputFacts = layer(data.inputFacts);
+  if (!inputFacts) {
+    return "whose inputFacts is not an object";
+  }
+  const inputContexts = layer(data.inputContexts);
+  if (!inputContexts) {
+    return "whose inputContexts is not an object";
+  }
   const mutatedFacts = layer(data.mutatedFacts);
+  if (!mutatedFacts) {
+    return "whose mutatedFacts is not an object";
+  }
   const generatedVariables = layer(data.generatedVariables);
-  if (typeof traceId !== "string" || traceId === "" || !inputFacts || !mutatedFacts || !generatedVariables) {
-    return undefined;
+  if (!generatedVariables) {
+    return "whose generatedVariables is not an object";
+  }
+  const executionTraces = traces<ExecutionTrace>(data.executionTraces);
+  if (!executionTraces) {
+    return "whose executionTraces is not a list of objects";
+  }
+  const decisionTraces = traces<DecisionTrace>(data.decisionTraces);
+  if (!decisionTraces) {
+    return "whose decisionTraces is not a list of objects";
   }
   const facts: Facts = { ...inputFacts, ...mutatedFacts, ...generatedVariables };
   return {
+    // Every field LexQ sent, so one it adds later reaches the caller before the types name
+    // it. The fields below come after it, so the checked values and the client's own fields
+    // win over a field of the same name in `data`.
+    ...data,
     source: "lexq",
     traceId,
+    executedAt,
+    totalProcessingTimeMs: totalProcessingTimeMs.toNumber(),
     // BLOCK sets isBlocked in generatedVariables, or in mutatedFacts when the request sent it.
     isBlocked: facts.isBlocked === true,
     facts,
     inputFacts,
+    inputContexts,
     mutatedFacts,
     generatedVariables,
+    executionTraces,
+    decisionTraces,
     idempotencyKey,
   };
 }
 
-/** A fact layer, or undefined when it is not an object. A missing layer is empty. */
+/** A fact layer or the contexts, or undefined when it is not an object. A missing one is empty. */
 function layer(value: unknown): Facts | undefined {
   if (value === undefined || value === null) {
     return {};
   }
   return isRecord(value) ? (value as Facts) : undefined;
+}
+
+/** A trace list, or undefined when it is not a list of objects. A missing list is empty. */
+function traces<T>(value: unknown): readonly T[] | undefined {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  return Array.isArray(value) && value.every(isRecord) ? (value as readonly T[]) : undefined;
 }
 
 async function settle<T>(fallback: ExecuteOptions<T>["fallback"], error: LexqError | TypeError): Promise<FallbackResult<T>> {

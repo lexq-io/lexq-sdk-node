@@ -71,8 +71,15 @@ export async function startFakeLexq(...responders: [Responder, ...Responder[]]):
   };
 }
 
+/**
+ * The two fields LexQ writes about the call on every decision, as JSON text to put after
+ * `traceId`. The client does not take a decision without them.
+ */
+export const CALL_FIELDS = '"executedAt":"2026-04-27T09:44:10.512384Z","totalProcessingTimeMs":3';
+
 export const DECISION_DATA =
-  '{"traceId":"trace-1","inputFacts":{"paymentAmount":150000},"mutatedFacts":{},"generatedVariables":{}}';
+  `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"paymentAmount":150000},"inputContexts":{},` +
+  '"mutatedFacts":{},"generatedVariables":{},"executionTraces":[],"decisionTraces":[]}';
 
 export const reply = {
   /** A decision. `data` is JSON text, so a test can write numbers no JavaScript number holds. */

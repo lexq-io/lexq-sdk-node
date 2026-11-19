@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Decimal } from "../../src/index.ts";
-import { clientFor, decisionOf, fallbackValue, reply, startFakeLexq } from "../support/fake-lexq.ts";
+import { CALL_FIELDS, clientFor, decisionOf, fallbackValue, reply, startFakeLexq } from "../support/fake-lexq.ts";
 
 // The numbers from a real call: 38 significant digits sent to a rule that takes 10% off,
 // the discounted amount LexQ rounded to 34 digits, and the 37-digit change. A JavaScript
@@ -14,7 +14,7 @@ const DELTA = "-123456789012345678901234567890123.5678";
 test("an amount with more than 34 significant digits goes out and comes back with every digit", async (t) => {
   const lexq = await startFakeLexq(
     reply.decision(
-      `{"traceId":"trace-1","inputFacts":{"paymentAmount":${SENT}},"mutatedFacts":{"paymentAmount":${DISCOUNTED}},` +
+      `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"paymentAmount":${SENT}},"mutatedFacts":{"paymentAmount":${DISCOUNTED}},` +
         `"generatedVariables":{"paymentAmount__delta":${DELTA}}}`,
     ),
   );
@@ -30,10 +30,12 @@ test("an amount with more than 34 significant digits goes out and comes back wit
   assert.equal(String(decision.facts.paymentAmount__delta), DELTA);
 });
 
-test("every number in a decision comes back as a Decimal with its text as written", async (t) => {
+test("every number in the facts comes back as a Decimal with its text as written", async (t) => {
   const written = ["0", "-0.0", "150000", "135000.00", "1E+2", "1e-7", "-15000", "1E+400"];
   const lexq = await startFakeLexq(
-    reply.decision(`{"traceId":"t","inputFacts":{"values":[${written.join(",")}],"nested":{"count":3}},"mutatedFacts":{},"generatedVariables":{}}`),
+    reply.decision(
+      `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"values":[${written.join(",")}],"nested":{"count":3}},"mutatedFacts":{},"generatedVariables":{}}`,
+    ),
   );
   t.after(() => lexq.close());
   const { facts } = decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue }));
@@ -47,6 +49,20 @@ test("every number in a decision comes back as a Decimal with its text as writte
     written,
   );
   assert.deepEqual(facts.nested, { count: new Decimal("3") });
+});
+
+test("a number in the contexts or in a rule's action keeps every digit, and the processing time is a number", async (t) => {
+  const lexq = await startFakeLexq(
+    reply.decision(
+      `{"traceId":"t","executedAt":"2026-04-27T09:44:10.512384Z","totalProcessingTimeMs":215,"inputContexts":{"limit":${SENT}},` +
+        `"executionTraces":[{"generatedActions":[{"type":"MUTATE_FACT","parameters":{"operand":${DELTA}}}]}]}`,
+    ),
+  );
+  t.after(() => lexq.close());
+  const decision = decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue }));
+  assert.deepEqual(decision.inputContexts, { limit: new Decimal(SENT) });
+  assert.deepEqual(decision.executionTraces[0]?.generatedActions[0]?.parameters, { operand: new Decimal(DELTA) });
+  assert.equal(decision.totalProcessingTimeMs, 215);
 });
 
 test("numbers, bigints, and Decimals go out as JSON numbers", async (t) => {
@@ -64,7 +80,9 @@ test("numbers, bigints, and Decimals go out as JSON numbers", async (t) => {
 
 test("facts from a decision can be sent back without losing a digit", async (t) => {
   const lexq = await startFakeLexq(
-    reply.decision(`{"traceId":"t","inputFacts":{"paymentAmount":${SENT}},"mutatedFacts":{"paymentAmount":${DISCOUNTED}},"generatedVariables":{}}`),
+    reply.decision(
+      `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"paymentAmount":${SENT}},"mutatedFacts":{"paymentAmount":${DISCOUNTED}},"generatedVariables":{}}`,
+    ),
   );
   t.after(() => lexq.close());
   const client = clientFor(lexq);

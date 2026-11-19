@@ -8,8 +8,9 @@ const json = JSON as JSON & { rawJSON(text: string): unknown };
  * A number with every digit kept.
  *
  * LexQ calculates in decimal, and an amount can carry 34 significant digits or more,
- * while a JavaScript number holds about 15. Every number in a decision comes back as a
- * `Decimal`, and a `Decimal` you send goes out with the same digits.
+ * while a JavaScript number holds about 15. Every number in a decision's facts, contexts,
+ * and traces comes back as a `Decimal`, and a `Decimal` you send goes out with the same
+ * digits.
  *
  * Read it with `toString()`, for example to hand it to a decimal library, or with
  * `toNumber()` when the nearest JavaScript number is enough. Arithmetic and comparison

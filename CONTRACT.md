@@ -126,6 +126,11 @@ default values belong in the code next to their tests, not in this file.
 
 ### Returning a decision
 
+- Return every field LexQ sends in `data`. Besides the facts and `traceId`, that is
+  `executedAt`, `totalProcessingTimeMs`, `inputContexts`, `executionTraces`, and
+  `decisionTraces`. A field LexQ adds later reaches the caller too, before the package's
+  types name it. A test reads the single-group response the Execution API reference
+  shows and fails when one of its fields is missing from the result.
 - Return the final facts as well as the three layers LexQ sends. `inputFacts` holds
   the facts as LexQ received them, `mutatedFacts` the facts a rule changed, and
   `generatedVariables` the keys the request did not send, such as a `SET_FACT` target.
@@ -137,15 +142,16 @@ default values belong in the code next to their tests, not in this file.
   otherwise. A fallback's value has no such field.
 - Return `data.traceId`. It is the execution's audit handle, and the caller stores it
   with the record the decision applies to. A retry that LexQ served from the
-  idempotency key returns the original `traceId`.
+  idempotency key returns the original `traceId` and `executedAt`.
 - Keep every number exact in both directions. LexQ calculates in decimal, and an
   amount can carry 34 significant digits or more. A JavaScript number holds 15
   reliably, and the package cannot tell an amount from a count. Parse responses so
   that no number loses digits, and give callers a way to send an exact amount as a
   JSON number. A string such as `"150000"` is not one: a fact whose type is NUMBER
-  rejects it with `P-060`. Every number in a decision reaches the caller as a
-  `Decimal`, which keeps the text LexQ wrote and has no implicit number value, so
-  arithmetic on it throws instead of rounding. A caller sends an exact amount as a
+  rejects it with `P-060`. Every number in the facts, the contexts, and the traces
+  reaches the caller as a `Decimal`, which keeps the text LexQ wrote and has no implicit
+  number value, so arithmetic on it throws instead of rounding. `totalProcessingTimeMs`
+  is a number, because it counts milliseconds. A caller sends an exact amount as a
   `Decimal` or a bigint, and a `Decimal` from one decision goes back out unchanged. A
   contract test sends and reads back an amount with more than 34 significant digits.
 

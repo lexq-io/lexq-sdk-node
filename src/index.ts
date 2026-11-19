@@ -5,11 +5,14 @@ export type { Attempt, LexqErrorReason } from "./errors.ts";
 export type {
   ClientOptions,
   DecisionResult,
+  DecisionTrace,
   ExecuteOptions,
   ExecuteResult,
+  ExecutionTrace,
   FactValue,
   Facts,
   FallbackResult,
   InputFactValue,
   InputFacts,
+  RuleAction,
 } from "./types.ts";
