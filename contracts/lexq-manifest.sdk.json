@@ -3,7 +3,8 @@
   "note": "Subset of LexQ's contract manifest limited to CONSTANTS and ERROR_CODES in scripts/gen-contract.mjs. Generated; do not edit.",
   "constants": {
     "MAX_REQUEST_NESTING_DEPTH": 32,
-    "IDEMPOTENCY_KEY_MAX_LENGTH": 255
+    "IDEMPOTENCY_KEY_MAX_LENGTH": 255,
+    "REPLAY_RETENTION_HOURS": 24
   },
   "errorCodes": [
     {

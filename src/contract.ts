@@ -5,3 +5,6 @@ export const MAX_REQUEST_NESTING_DEPTH = 32;
 
 /** The longest `Idempotency-Key` LexQ accepts, in characters. LexQ answers a longer key with `400 I-003`. */
 export const IDEMPOTENCY_KEY_MAX_LENGTH = 255;
+
+/** How long a successful decision stays available to a repeat with the same `Idempotency-Key`, in hours. A later repeat runs the decision again and is billed again. */
+export const REPLAY_RETENTION_HOURS = 24;

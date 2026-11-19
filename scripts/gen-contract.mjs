@@ -30,6 +30,7 @@ const SOURCE = new URL("src/contract.ts", ROOT);
 const CONSTANTS = [
   ["MAX_REQUEST_NESTING_DEPTH", "How many levels a request body may nest. LexQ answers a deeper body with `400 C-012`."],
   ["IDEMPOTENCY_KEY_MAX_LENGTH", "The longest `Idempotency-Key` LexQ accepts, in characters. LexQ answers a longer key with `400 I-003`."],
+  ["REPLAY_RETENTION_HOURS", "How long a successful decision stays available to a repeat with the same `Idempotency-Key`, in hours. A later repeat runs the decision again and is billed again."],
 ];
 
 /** The error codes that the retry table in CONTRACT.md names. The subset carries the status LexQ gives each one. */
