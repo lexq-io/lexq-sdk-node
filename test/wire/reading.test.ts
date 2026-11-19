@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MAX_BODY_BYTES, MAX_MESSAGE_LENGTH } from "../../src/attempt.ts";
-import { clientFor, fallbackValue, lexqErrorOf, reply, startFakeLexq, type Responder } from "../support/fake-lexq.ts";
+import { CALL_FIELDS, clientFor, fallbackValue, lexqErrorOf, reply, startFakeLexq, type Responder } from "../support/fake-lexq.ts";
 
 async function failureFrom(responder: Responder) {
   const lexq = await startFakeLexq(responder);
@@ -67,8 +67,6 @@ const defects: [string, Responder][] = [
   ["a 4xx with result SUCCESS", reply.json(400, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}')],
   ["a 5xx with result SUCCESS", reply.json(500, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}')],
   ["result SUCCESS without data", reply.json(200, '{"result":"SUCCESS"}')],
-  ["a decision without a traceId", reply.json(200, '{"result":"SUCCESS","data":{"inputFacts":{}}}')],
-  ["a decision whose facts are a list", reply.json(200, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":[]}}')],
   ["JSON that is not an object", reply.json(200, '["SUCCESS"]')],
 ];
 
@@ -76,6 +74,30 @@ for (const [defect, responder] of defects) {
   test(`${defect} is a failure, even when it carries data`, async () => {
     const { error } = await failureFrom(responder);
     assert.equal(error.reason, "response");
+  });
+}
+
+const brokenDecisions: [string, string, string][] = [
+  ["a decision without a traceId", `{${CALL_FIELDS},"inputFacts":{}}`, "without a traceId"],
+  ["a decision without executedAt", '{"traceId":"t","totalProcessingTimeMs":3}', "without executedAt"],
+  [
+    "a decision whose processing time is text",
+    '{"traceId":"t","executedAt":"2026-04-27T09:44:10.512384Z","totalProcessingTimeMs":"3"}',
+    "whose totalProcessingTimeMs is not a number",
+  ],
+  ["a decision whose facts are a list", `{"traceId":"t",${CALL_FIELDS},"inputFacts":[]}`, "whose inputFacts is not an object"],
+  ["a decision whose contexts are a list", `{"traceId":"t",${CALL_FIELDS},"inputContexts":[]}`, "whose inputContexts is not an object"],
+  ["a decision whose changed facts are text", `{"traceId":"t",${CALL_FIELDS},"mutatedFacts":"x"}`, "whose mutatedFacts is not an object"],
+  ["a decision whose generated values are a list", `{"traceId":"t",${CALL_FIELDS},"generatedVariables":[]}`, "whose generatedVariables is not an object"],
+  ["a decision whose traces are not a list", `{"traceId":"t",${CALL_FIELDS},"executionTraces":{}}`, "whose executionTraces is not a list of objects"],
+  ["a decision with a trace that is not an object", `{"traceId":"t",${CALL_FIELDS},"decisionTraces":["SELECTED"]}`, "whose decisionTraces is not a list of objects"],
+];
+
+for (const [defect, data, problem] of brokenDecisions) {
+  test(`${defect} is a failure that names what is wrong`, async () => {
+    const { error } = await failureFrom(reply.json(200, `{"result":"SUCCESS","data":${data}}`));
+    assert.equal(error.reason, "response");
+    assert.equal(error.message, `LexQ answered 200 with result SUCCESS but a decision ${problem}`);
   });
 }
 

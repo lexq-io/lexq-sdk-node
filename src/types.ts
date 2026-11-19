@@ -89,23 +89,89 @@ export interface ExecuteOptions<T> {
   readonly retry?: boolean | undefined;
 }
 
-/** LexQ's decision. */
+/**
+ * LexQ's decision: every field LexQ returns for the call, the final facts, and `isBlocked`.
+ * A field LexQ adds after this release is there as well, before this type names it.
+ */
 export interface DecisionResult {
   readonly source: "lexq";
   /** The execution's audit handle. Store it with the record the decision applies to. */
   readonly traceId: string;
+  /**
+   * When LexQ ran the decision, as LexQ wrote it, for example `2026-04-27T09:44:10.512384Z`.
+   * It keeps the microseconds a `Date` would drop. A repeat that LexQ answered from the
+   * idempotency key has the first call's `traceId` and `executedAt`.
+   */
+  readonly executedAt: string;
+  /** How long LexQ took to run the decision, in milliseconds. */
+  readonly totalProcessingTimeMs: number;
   /** `true` when a `BLOCK` action ran: the final facts have `isBlocked: true`. */
   readonly isBlocked: boolean;
   /** The final facts: `{ ...inputFacts, ...mutatedFacts, ...generatedVariables }`. */
   readonly facts: Facts;
   /** The facts as LexQ received them. */
   readonly inputFacts: Facts;
+  /** The `contexts` the request sent, or `{}` when it sent none. */
+  readonly inputContexts: Facts;
   /** The facts a rule changed. */
   readonly mutatedFacts: Facts;
   /** Values the request did not send, such as a `SET_FACT` target or `isBlocked`. */
   readonly generatedVariables: Facts;
+  /**
+   * Each rule LexQ evaluated, in the order it decided: by group priority, then by rule
+   * priority. The entry at an index describes the same rule as `decisionTraces` at that index.
+   */
+  readonly executionTraces: readonly ExecutionTrace[];
+  /** Why each rule LexQ evaluated fired or did not, in the same order as `executionTraces`. */
+  readonly decisionTraces: readonly DecisionTrace[];
   /** The `Idempotency-Key` the call used. */
   readonly idempotencyKey: string;
+}
+
+/** How LexQ evaluated one rule. */
+export interface ExecutionTrace {
+  readonly policyGroupId: string;
+  readonly policyVersionId: string;
+  readonly ruleId: string;
+  readonly ruleName: string;
+  /** Whether the rule's condition matched the facts. */
+  readonly matched: boolean;
+  /** The rule's condition as text, for example `paymentAmount >= 100000`. */
+  readonly matchExpression: string;
+  /**
+   * The actions the rule defines, whether or not they ran. They ran when the rule's entry in
+   * `decisionTraces` has the status `SELECTED`.
+   */
+  readonly generatedActions: readonly RuleAction[];
+}
+
+/** An action a rule defines. */
+export interface RuleAction {
+  /** For example `MUTATE_FACT`, `SET_FACT`, or `BLOCK`. */
+  readonly type: string;
+  /** The action's settings, such as `targetVar` and `operand`. */
+  readonly parameters: Facts;
+}
+
+/**
+ * Why one rule LexQ evaluated fired or did not.
+ * [Decision Trace](https://docs.lexq.io/guides/policy-rules#decision-trace) lists every status
+ * and reason code.
+ */
+export interface DecisionTrace {
+  readonly ruleId: string;
+  readonly ruleName: string;
+  readonly policyGroupId: string;
+  readonly policyVersionId: string;
+  /** For example `SELECTED` when the rule fired and its actions ran, or `NO_MATCH`. */
+  readonly status: string;
+  /** For example `FINAL_WINNER` or `CONDITION_MISMATCH`. */
+  readonly reasonCode: string;
+  /**
+   * More about the reason, such as the rule that won when this one lost a competition, or
+   * why a condition could not be evaluated. Often `null`.
+   */
+  readonly reasonDetail: string | null;
 }
 
 /** The fallback's value, and why it was needed. */

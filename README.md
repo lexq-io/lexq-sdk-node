@@ -46,17 +46,19 @@ const result = await lexq.execute(groupId, {
 
 if (result.source === "lexq") {
   // result.facts, result.isBlocked, and result.traceId, which you store with the order.
+  // result.decisionTraces says why each rule fired or did not.
 } else {
   // result.value is what the fallback returned, and result.error says why.
 }
 ```
 
-Every number in a decision is a `Decimal`, because LexQ calculates in decimal and an
-amount can have more digits than a JavaScript number holds. Read it with `toString()`,
-for example to pass it to a decimal library, or with `toNumber()` when the nearest
-JavaScript number is enough. Arithmetic on a `Decimal` throws instead of rounding. To
-send an exact amount, pass `new Decimal("150000.50")` or a bigint. A string such as
-`"150000"` stays a string, and a fact whose type is NUMBER rejects it with `P-060`.
+Every number in a decision's facts, contexts, and traces is a `Decimal`, because LexQ
+calculates in decimal and an amount can have more digits than a JavaScript number
+holds. Read it with `toString()`, for example to pass it to a decimal library, or with
+`toNumber()` when the nearest JavaScript number is enough. Arithmetic on a `Decimal`
+throws instead of rounding. To send an exact amount, pass `new Decimal("150000.50")` or
+a bigint. A string such as `"150000"` stays a string, and a fact whose type is NUMBER
+rejects it with `P-060`.
 
 By default a call has a 15-second deadline and 10 seconds per attempt, and the circuit
 breaker opens for 10 seconds after 5 failed calls in a row. Set `timeoutMs` lower for a
