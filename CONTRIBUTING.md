@@ -24,10 +24,11 @@ is in [CONTRACT.md](CONTRACT.md).
   hook the caller owns.
 - Publish only from a tag. Raise `version` in `package.json` inside the pull request,
   where a reviewer sees it beside the change that justifies it. After the merge, push
-  the matching `v<version>` tag, and CI publishes with npm provenance. Never run
-  `npm publish` by hand. `repository` in `package.json` names this repository, because
-  npm checks the provenance against it. The first release is `0.1.0` or later, because
-  `0.0.1` on npm is a name reservation.
+  the matching `v<version>` tag. CI stages that version on npm with provenance, and it
+  goes public only when a maintainer approves it there with two-factor authentication.
+  Never run `npm publish` by hand. `repository` in `package.json` names this
+  repository, because npm checks the provenance against it. The first release is
+  `0.1.0` or later, because `0.0.1` on npm is a name reservation.
 - Pick the version number by what breaks. A change is breaking when a call that used
   to work now fails or does something else. That includes removing or renaming an
   option, changing its type, making an optional argument required, narrowing the
