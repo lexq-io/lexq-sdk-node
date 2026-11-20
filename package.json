@@ -6,7 +6,7 @@
   "author": "LexQ, LLC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lexq-io/lexq-sdk-node.git"
+    "url": "git+https://github.com/lexq-io/lexq-sdk-node.git"
   },
   "type": "module",
   "exports": {
