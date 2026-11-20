@@ -1,0 +1,56 @@
+name: Publish
+
+# Pushing a tag such as v0.1.0 stages that version on npm. It goes public only when a
+# maintainer approves it there with two-factor authentication. Nothing else publishes.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # npm trusted publishing trades this job's OIDC token for a short-lived publish
+      # credential, so this repository stores no npm token.
+      id-token: write
+    steps:
+      # The full history, so a step below can look for the tagged commit in main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Staged publishing needs npm 11.15.0 or later, which Node.js 24 has shipped since
+      # 24.18.0. check-latest takes the newest Node.js 24 rather than an older one the
+      # runner may have cached.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          check-latest: true
+          registry-url: https://registry.npmjs.org
+
+      # A tag on a commit that never reached main would publish code nobody merged.
+      - run: git merge-base --is-ancestor HEAD origin/main
+
+      # The tag names the version, so a tag that does not match package.json stops here.
+      - run: test "$TAG" = "v$(node -p 'require("./package.json").version')"
+        env:
+          TAG: ${{ github.ref_name }}
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      - run: npm run build
+
+      # npm holds a staged version where nobody can install it until a maintainer
+      # approves it. --provenance links the version publicly to the run that built it.
+      - run: npm stage publish --provenance

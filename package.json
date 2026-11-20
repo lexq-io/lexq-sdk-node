@@ -1,6 +1,6 @@
 {
   "name": "@lexq/sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Node.js client for the LexQ execution API",
   "license": "Apache-2.0",
   "author": "LexQ, LLC",
@@ -9,10 +9,21 @@
     "url": "https://github.com/lexq-io/lexq-sdk-node.git"
   },
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc",
     "test": "node --test \"test/**/*.test.ts\""
   },
