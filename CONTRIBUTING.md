@@ -19,8 +19,10 @@ is in [CONTRACT.md](CONTRACT.md).
 - Add a runtime dependency only with a reason in the pull request. Every dependency
   ships into every customer's server.
 - Log nothing by default. Errors carry the status, `errorCode`, LexQ's `message`, and
-  the idempotency key. They never carry the API key, the facts, or a raw response body,
-  because callers log errors. Report anything else through the result and an optional
+  the idempotency key. They never carry the API key, a fact's value, or a raw response
+  body, because callers log errors. For the same reason, every message is one line of
+  bounded length, even where it quotes text the client did not write, such as LexQ's
+  message or a key in `facts`. Report anything else through the result and an optional
   hook the caller owns.
 - Publish only from a tag. Raise `version` in `package.json` inside the pull request,
   where a reviewer sees it beside the change that justifies it. After the merge, push

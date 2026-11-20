@@ -39,10 +39,11 @@ test("a body that is not JSON is a failure that keeps its status", async () => {
 });
 
 test("LexQ's message stays on one line and within MAX_MESSAGE_LENGTH", async () => {
-  const lineSeparator = String.fromCharCode(0x2028);
-  const forged = `Bad input\n2026-11-10T00:00:00Z INFO payment approved\r${lineSeparator}`;
+  // A line separator and a right-to-left override.
+  const hidden = String.fromCharCode(0x2028, 0x202e);
+  const forged = `Bad input\n2026-11-10T00:00:00Z INFO payment approved\r${hidden}`;
   const { error } = await failureFrom(reply.error(400, "P-015", forged + "x".repeat(MAX_MESSAGE_LENGTH * 2)));
-  assert.doesNotMatch(error.message, /[\p{Cc}\p{Zl}\p{Zp}]/u);
+  assert.doesNotMatch(error.message, /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u);
   assert.match(error.message, /^LexQ answered 400 P-015: Bad input 2026-11-10T00:00:00Z INFO payment approved x+\.\.\.$/);
   assert.ok(error.message.length < MAX_MESSAGE_LENGTH + 40);
 });

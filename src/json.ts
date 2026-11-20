@@ -1,5 +1,6 @@
 import { MAX_REQUEST_NESTING_DEPTH } from "./contract.ts";
 import { Decimal } from "./decimal.ts";
+import { cut, escaped } from "./text.ts";
 
 // JSON.isRawJSON and the source text JSON.parse passes to a reviver are in Node.js 21
 // and later, but not yet in TypeScript's lib.
@@ -16,6 +17,16 @@ export const MAX_DEPTH = MAX_REQUEST_NESTING_DEPTH;
 
 /** The level of a value in `facts` or `contexts`: inside the body and that object. */
 const ENTRY_LEVEL = 3;
+
+/**
+ * The longest path a TypeError shows. A path to a value at the depth limit fits when its
+ * keys are short, and one long key cannot make the message long.
+ */
+const MAX_PATH_LENGTH = 300;
+
+// A class name a TypeError shows, such as Map. A class can be given any name, and one that
+// is not a plain name is left out.
+const CLASS_NAME = /^[A-Za-z_$][\w$]{0,99}$/;
 
 /**
  * Writes the request body once, so every attempt can send the same bytes.
@@ -61,16 +72,16 @@ function encodeValue(value: unknown, path: string, depth: number, ancestors: Set
       return value ? "true" : "false";
     case "number":
       if (!Number.isFinite(value)) {
-        throw new TypeError(`${path} is ${value}, which JSON cannot carry`);
+        throw unsendable(path, `is ${value}, which JSON cannot carry`);
       }
       return String(value);
     case "bigint":
       return value.toString();
     case "undefined":
-      throw new TypeError(`${path} is undefined, which JSON cannot carry`);
+      throw unsendable(path, "is undefined, which JSON cannot carry");
     case "function":
     case "symbol":
-      throw new TypeError(`${path} is a ${typeof value}, which JSON cannot carry`);
+      throw unsendable(path, `is a ${typeof value}, which JSON cannot carry`);
     default:
       break;
   }
@@ -84,10 +95,10 @@ function encodeValue(value: unknown, path: string, depth: number, ancestors: Set
     return value.rawJSON;
   }
   if (depth > MAX_DEPTH) {
-    throw new TypeError(`${path} would nest the request body more than ${MAX_DEPTH} levels deep`);
+    throw unsendable(path, `would nest the request body more than ${MAX_DEPTH} levels deep`);
   }
   if (ancestors.has(value as object)) {
-    throw new TypeError(`${path} contains itself, which JSON cannot carry`);
+    throw unsendable(path, "contains itself, which JSON cannot carry");
   }
   ancestors.add(value as object);
   try {
@@ -103,7 +114,7 @@ function encodeContainer(value: object, path: string, depth: number, ancestors: 
     for (let index = 0; index < value.length; index += 1) {
       const item: unknown = value[index];
       if (!(index in value) || item === undefined) {
-        throw new TypeError(`${path}[${index}] is missing, which JSON cannot carry`);
+        throw unsendable(`${path}[${index}]`, "is missing, which JSON cannot carry");
       }
       items.push(encodeValue(item, `${path}[${index}]`, depth + 1, ancestors));
     }
@@ -117,7 +128,8 @@ function encodeContainer(value: object, path: string, depth: number, ancestors: 
   const prototype: unknown = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     const name = (value as { constructor?: { name?: unknown } }).constructor?.name;
-    throw new TypeError(`${path} is a ${typeof name === "string" ? name : "object"}, which JSON cannot carry as written`);
+    const kind = typeof name === "string" && CLASS_NAME.test(name) ? `a ${name}` : "an object that is not plain";
+    throw unsendable(path, `is ${kind}, which JSON cannot carry as written`);
   }
   const entries: string[] = [];
   for (const [key, item] of Object.entries(value)) {
@@ -127,4 +139,11 @@ function encodeContainer(value: object, path: string, depth: number, ancestors: 
     entries.push(`${JSON.stringify(key)}:${encodeValue(item, `${path}.${key}`, depth + 1, ancestors)}`);
   }
   return `{${entries.join(",")}}`;
+}
+
+/** A TypeError about the value at path, with the path on one line and cut to MAX_PATH_LENGTH. */
+function unsendable(path: string, problem: string): TypeError {
+  // Escaping can make the path several times longer, so only the part that can be shown is
+  // escaped. The message is the same as escaping the whole path and then cutting it.
+  return new TypeError(`${cut(escaped(path.slice(0, MAX_PATH_LENGTH + 1)), MAX_PATH_LENGTH)} ${problem}`);
 }
