@@ -62,6 +62,58 @@ test("a TypeError names where the value is, but not the value", () => {
   });
 });
 
+test("a TypeError stays on one line and short, whatever the keys hold", () => {
+  // A line feed, a carriage return, a next line, and a line and a paragraph separator.
+  const breaks = String.fromCharCode(0x0a, 0x0d, 0x85, 0x2028, 0x2029);
+  const key = `k${breaks}2026-11-20T00:00:00Z INFO payment approved`;
+  assert.throws(() => encodeBody({ [key]: Number.NaN }, undefined), {
+    name: "TypeError",
+    message: "facts.k\\u000a\\u000d\\u0085\\u2028\\u20292026-11-20T00:00:00Z INFO payment approved is NaN, which JSON cannot carry",
+  });
+  const encodings = [
+    () => encodeBody({ customerTier: { [key]: nested(MAX_DEPTH) } }, undefined),
+    () => encodeBody({}, { [key]: [1, undefined] }),
+    () => encodeBody({ order: { [key]: Symbol("s") } }, undefined),
+    () => encodeBody({ ["x".repeat(100_000)]: Number.NaN }, undefined),
+  ];
+  for (const encode of encodings) {
+    assert.throws(encode, (error: unknown) => {
+      assert.ok(error instanceof TypeError);
+      assert.doesNotMatch(error.message, /[\p{Cc}\p{Zl}\p{Zp}]/u);
+      assert.ok(error.message.length < 400, `${error.message.length} characters`);
+      return true;
+    });
+  }
+});
+
+test("a TypeError escapes a format character or an unpaired surrogate in a key", () => {
+  // A right-to-left override, a zero width space, a tag letter, and an unpaired surrogate.
+  const hidden = String.fromCharCode(0x202e, 0x200b) + String.fromCodePoint(0xe0041) + String.fromCharCode(0xd800);
+  assert.throws(() => encodeBody({ [`k${hidden}`]: Number.NaN }, undefined), {
+    name: "TypeError",
+    message: "facts.k\\u202e\\u200b\\udb40\\udc41\\ud800 is NaN, which JSON cannot carry",
+  });
+});
+
+test("a TypeError cut short does not split a character in two", () => {
+  // With "facts." in front, the emoji's first code unit is the 300th character of the path.
+  const emoji = String.fromCodePoint(0x1f600);
+  const key = `${"x".repeat(293)}${emoji}${"x".repeat(10)}`;
+  assert.throws(() => encodeBody({ [key]: Number.NaN }, undefined), {
+    name: "TypeError",
+    message: `facts.${"x".repeat(293)}... is NaN, which JSON cannot carry`,
+  });
+});
+
+test("a class name that is not a plain name is left out of a TypeError", () => {
+  class Odd {}
+  Object.defineProperty(Odd, "name", { value: "Odd\n2026-11-20T00:00:00Z INFO payment approved" });
+  assert.throws(() => encodeBody({ tier: new Odd() }, undefined), {
+    name: "TypeError",
+    message: "facts.tier is an object that is not plain, which JSON cannot carry as written",
+  });
+});
+
 test("a body parses with every number as a Decimal, and everything else as JSON.parse reads it", () => {
   const parsed = decodeBody('{"a":1.10,"b":"1.10","c":true,"d":null,"e":[1e2,{"f":-0}]}');
   assert.deepEqual(parsed, {

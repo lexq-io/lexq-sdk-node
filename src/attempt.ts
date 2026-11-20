@@ -1,5 +1,6 @@
 import { Decimal } from "./decimal.ts";
 import { decodeBody } from "./json.ts";
+import { cut, spaced } from "./text.ts";
 
 /**
  * The largest response body the client reads, in bytes. A larger body ends the call with
@@ -13,9 +14,6 @@ export const MAX_MESSAGE_LENGTH = 1000;
 // LexQ's codes look like P-015 or ACT-033. A value that is not a short token, such as
 // text with a line break, is not kept as a code.
 const ERROR_CODE = /^[A-Za-z0-9_-]{1,32}$/;
-// Callers log errors, and a control character or a line or paragraph separator in a
-// message would start a new log line.
-const CONTROL_CHARACTERS = /[\p{Cc}\p{Zl}\p{Zp}]+/gu;
 
 /** What one attempt came back with. */
 export type AttemptOutcome =
@@ -142,8 +140,7 @@ function classify(status: number, text: string | undefined, retryAfter: string |
 }
 
 function clean(message: string): string {
-  const line = message.replace(CONTROL_CHARACTERS, " ").trim();
-  return line.length > MAX_MESSAGE_LENGTH ? `${line.slice(0, MAX_MESSAGE_LENGTH)}...` : line;
+  return cut(spaced(message), MAX_MESSAGE_LENGTH);
 }
 
 export function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
