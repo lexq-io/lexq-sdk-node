@@ -129,8 +129,11 @@ default values belong in the code next to their tests, not in this file.
 - Return every field LexQ sends in `data`. Besides the facts and `traceId`, that is
   `executedAt`, `totalProcessingTimeMs`, `inputContexts`, `executionTraces`, and
   `decisionTraces`. A field LexQ adds later reaches the caller too, before the package's
-  types name it. A test reads the single-group response the Execution API reference
-  shows and fails when one of its fields is missing from the result.
+  types name it. When they do, they make it optional, and the client accepts it when it
+  is empty: a retry that LexQ serves from the idempotency key can return a decision made
+  before the field existed, with the field `null`, `0`, or `false`. A test reads the
+  single-group response the Execution API reference shows and fails when one of its
+  fields is missing from the result.
 - Return the final facts as well as the three layers LexQ sends. `inputFacts` holds
   the facts as LexQ received them, `mutatedFacts` the facts a rule changed, and
   `generatedVariables` the keys the request did not send, such as a `SET_FACT` target.
