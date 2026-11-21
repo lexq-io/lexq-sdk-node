@@ -80,9 +80,10 @@ export interface ExecuteOptions<T> {
   /**
    * The value your service uses when the call cannot get LexQ's decision, for whatever
    * reason. Only your service knows which side is safe: a checkout can go ahead without a
-   * discount, a transfer should wait. If it throws, the call rejects with that error.
+   * discount, a transfer should wait. The error's `reason` says why the call failed. If the
+   * fallback throws, the call rejects with that error.
    */
-  readonly fallback: (error: LexqError | TypeError) => T | PromiseLike<T>;
+  readonly fallback: (error: LexqError) => T | PromiseLike<T>;
   /** This call's deadline, in milliseconds, in place of the client's. */
   readonly timeoutMs?: number | undefined;
   /** `false` turns retries off for this call, and `true` turns them on. */
@@ -178,8 +179,8 @@ export interface DecisionTrace {
 export interface FallbackResult<T> {
   readonly source: "fallback";
   readonly value: T;
-  /** A `LexqError`, or a `TypeError` when a fact or the idempotency key could not be sent. */
-  readonly error: LexqError | TypeError;
+  /** Why the call could not get LexQ's decision. */
+  readonly error: LexqError;
 }
 
 /** Either LexQ's decision or the fallback's value. `source` says which. */

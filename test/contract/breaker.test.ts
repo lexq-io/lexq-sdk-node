@@ -10,7 +10,6 @@ import {
   closedPort,
   clientFor,
   decisionOf,
-  fallbackOf,
   fallbackValue,
   lexqErrorOf,
   reply,
@@ -102,8 +101,8 @@ test("a call that sends nothing leaves the count alone", async (t) => {
   t.after(() => lexq.close());
   const client = clientFor(lexq, { breaker: { threshold: 2 } });
   await client.execute("group-1", failing);
-  assert.ok(fallbackOf(await client.execute("group-1", { ...failing, facts: { amount: Number.NaN } })).error instanceof TypeError);
-  assert.ok(fallbackOf(await client.execute("group-1", { ...failing, idempotencyKey: "" })).error instanceof TypeError);
+  assert.equal(lexqErrorOf(await client.execute("group-1", { ...failing, facts: { amount: Number.NaN } })).reason, "invalid_input");
+  assert.equal(lexqErrorOf(await client.execute("group-1", { ...failing, idempotencyKey: "" })).reason, "invalid_input");
   await client.execute("group-1", failing);
   assert.equal(lexqErrorOf(await client.execute("group-1", failing)).reason, "breaker_open");
   assert.equal(lexq.received.length, 2);

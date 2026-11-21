@@ -117,19 +117,21 @@ export class LexqClient {
     const retry = flag("retry", options.retry) ?? this.#retry;
 
     const idempotencyKey = options.idempotencyKey ?? randomUUID();
+    if (!HEADER_SAFE.test(idempotencyKey)) {
+      const problem = new TypeError(
+        idempotencyKey === ""
+          ? "idempotencyKey is empty"
+          : "idempotencyKey must be printable ASCII with no space at either end, so a header carries it unchanged. Hash an ID that is not ASCII first",
+      );
+      // The error leaves the key out: a key that cannot go in a header can also break a log line.
+      return settle(fallback, invalidInput(problem, undefined));
+    }
     let body: Uint8Array;
     try {
-      if (!HEADER_SAFE.test(idempotencyKey)) {
-        throw new TypeError(
-          idempotencyKey === ""
-            ? "idempotencyKey is empty"
-            : "idempotencyKey must be printable ASCII with no space at either end, so a header carries it unchanged. Hash an ID that is not ASCII first",
-        );
-      }
       body = encoder.encode(encodeBody(options.facts, options.contexts));
     } catch (error) {
       if (error instanceof TypeError) {
-        return settle(fallback, error);
+        return settle(fallback, invalidInput(error, idempotencyKey));
       }
       throw error;
     }
@@ -245,6 +247,14 @@ function waitBeforeRetry(outcome: AttemptOutcome, failedAttempts: number): numbe
 /** A call adds one to the breaker when LexQ could not be reached or answered with a 5xx. */
 function countsAgainstBreaker(error: LexqError): boolean {
   return error.reason !== "response" || (error.status !== undefined && error.status >= 500);
+}
+
+/**
+ * A request the client would not send. The TypeError that stopped it says what to change, so
+ * it is the error's cause and its message.
+ */
+function invalidInput(cause: TypeError, idempotencyKey: string | undefined): LexqError {
+  return new LexqError(cause.message, { reason: "invalid_input", attempts: [], idempotencyKey, cause });
 }
 
 function deadline(timeoutMs: number, attempts: readonly Attempt[], idempotencyKey: string): LexqError {
@@ -372,7 +382,7 @@ function traces<T>(value: unknown): readonly T[] | undefined {
   return Array.isArray(value) && value.every(isRecord) ? (value as readonly T[]) : undefined;
 }
 
-async function settle<T>(fallback: ExecuteOptions<T>["fallback"], error: LexqError | TypeError): Promise<FallbackResult<T>> {
+async function settle<T>(fallback: ExecuteOptions<T>["fallback"], error: LexqError): Promise<FallbackResult<T>> {
   // The deadline covers the attempts to reach LexQ, not the fallback.
   return { source: "fallback", value: await fallback(error), error };
 }

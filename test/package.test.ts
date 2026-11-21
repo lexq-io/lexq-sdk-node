@@ -83,11 +83,12 @@ test("TypeScript finds the declarations through the package name", async () => {
   await writeFile(
     join(dir, "consumer.ts"),
     [
-      'import { Decimal, LexqClient, LexqError, type ExecuteResult } from "@lexq/sdk";',
+      'import { Decimal, LexqClient, type ExecuteResult } from "@lexq/sdk";',
       "",
       "export async function decide(lexq: LexqClient): Promise<string> {",
       '  const result: ExecuteResult<number> = await lexq.execute("group-1", { facts: { amount: new Decimal("1.5") }, fallback: () => 0 });',
-      '  return result.source === "lexq" ? result.traceId : result.error instanceof LexqError ? String(result.error.status) : result.error.message;',
+      "  // The fallback's error is always a LexqError, so its reason needs no instanceof check.",
+      '  return result.source === "lexq" ? result.traceId : `${result.error.reason} ${String(result.error.status)}`;',
       "}",
       "",
       "// If the package resolved to `any`, this directive would go unused and fail the check.",

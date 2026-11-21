@@ -2,13 +2,17 @@
  * Why a call ended with the fallback.
  *
  * - `breaker_open`: the circuit breaker is open, so nothing was sent.
+ * - `invalid_input`: the client would not send the request, so nothing was sent. JSON
+ *   cannot carry a value in `facts` or `contexts` as written, or the value nests too deep,
+ *   or the idempotency key is empty or cannot go in a header. `cause` holds the `TypeError`
+ *   that says which.
  * - `deadline`: the call's deadline ran out before LexQ answered.
  * - `timeout`: the last attempt got no answer within its own timeout, and no retry followed.
  * - `connection`: the last attempt could not connect, or the connection broke.
  * - `response`: an answer came back that is not a decision. `status` holds the HTTP
  *   status, and `errorCode` holds LexQ's code when the body carried one.
  */
-export type LexqErrorReason = "breaker_open" | "deadline" | "timeout" | "connection" | "response";
+export type LexqErrorReason = "breaker_open" | "invalid_input" | "deadline" | "timeout" | "connection" | "response";
 
 /** One attempt that did not return a decision. */
 export interface Attempt {
@@ -39,8 +43,12 @@ export class LexqError extends Error {
   readonly errorCode: string | undefined;
   /** Every attempt, in order. Empty when nothing was sent. */
   readonly attempts: readonly Attempt[];
-  /** The `Idempotency-Key` the call used, whether you passed it or the client generated it. */
-  readonly idempotencyKey: string;
+  /**
+   * The `Idempotency-Key` the call used, whether you passed it or the client generated it.
+   * `undefined` when the key itself is why the request was not sent: a key that cannot go in
+   * a header could also break a log line.
+   */
+  readonly idempotencyKey: string | undefined;
 
   constructor(
     message: string,
@@ -49,7 +57,7 @@ export class LexqError extends Error {
       readonly status?: number | undefined;
       readonly errorCode?: string | undefined;
       readonly attempts: readonly Attempt[];
-      readonly idempotencyKey: string;
+      readonly idempotencyKey: string | undefined;
       readonly cause?: unknown;
     },
   ) {

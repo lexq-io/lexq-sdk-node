@@ -84,13 +84,16 @@ Everything else uses the fallback, including two failures that happen before any
 is sent. One is a fact the client will not write: a value that JSON cannot carry as
 written, such as `NaN`, `Infinity`, or a list with a missing element, or a value nested
 deeper than the client's limit. The other is an idempotency key that is empty or that a
-header cannot carry. For both, the fallback receives a `TypeError`.
+header cannot carry.
 
-The error the fallback receives names the reason: an open breaker, the deadline, a
-failed connection, or a LexQ error with its status and `errorCode`. It also lists every
-attempt and carries the idempotency key the call used. When LexQ finished the call's
-decision and it succeeded, repeating the call with that key within 24 hours returns the
-decision instead of running a second one.
+The fallback always receives a `LexqError`, and its reason says why: an open breaker, a
+request the client would not send, the deadline, an attempt that timed out, a failed
+connection, or a LexQ error with its status and `errorCode`. It also lists every attempt
+and carries the idempotency key the call used. For a request the client would not send,
+the reason is `invalid_input`, and the `TypeError` that says what to change is the
+error's cause. When the key itself was the problem, the error leaves the key out. When
+LexQ finished the call's decision and it succeeded, repeating the call with that key
+within 24 hours returns the decision instead of running a second one.
 
 ### Contract tests
 
