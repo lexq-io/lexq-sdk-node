@@ -167,9 +167,13 @@ default values belong in the code next to their tests, not in this file.
   `Authorization`. The constructor throws where `window` and `document` exist, because
   the key would ship to every visitor. It accepts an `http` base URL only for
   `localhost`, `127.0.0.1`, and `[::1]`.
-- Drop a fact whose value is `null` or `undefined` before sending. If a rule needs it,
-  LexQ answers `P-015` with its name. Inside a list, a missing element fails the call
-  instead, as described under Errors.
+- Send `null` as JSON `null` and keep its key, at every level of `facts` and
+  `contexts`. LexQ treats a key sent as `null` differently from a key left out. A
+  condition on a `null` value does not match, even in a rule that blocks. If an
+  enabled rule reads a key that the request leaves out of `facts`, the request fails
+  with `P-015`, which names the key, before any rule runs. Leave out a key whose value
+  is `undefined`, as `JSON.stringify` does. Inside a list, a missing element fails the
+  call instead, as described under Errors.
 - Never shorten a caller's idempotency key. LexQ accepts up to 255 characters and
   answers a longer key with `I-003` rather than cutting it. Keys are stored with the
   execution, so tell callers to hash long IDs and keep personal data out of them.

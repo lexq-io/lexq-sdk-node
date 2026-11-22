@@ -59,6 +59,16 @@ throws instead of rounding. To send an exact amount, pass `new Decimal("150000.5
 a bigint. A string such as `"150000"` stays a string, and a fact whose type is NUMBER
 rejects it with `P-060`.
 
+To send a fact you have no value for, set it to `null`. LexQ keeps the key, but a
+condition on a `null` value does not match, even in a rule that blocks. Make sure the
+group still decides such a request, as
+[When an input is null](https://docs.lexq.io/guides/policy-rules#when-an-input-is-null)
+shows. A fact whose value is `undefined` is left out of the request. If an enabled rule
+reads it, LexQ answers `P-015` and the call uses the fallback.
+[Required vs Optional Facts](https://docs.lexq.io/guides/fact-definitions#required-vs-optional-facts)
+lists the keys a request must send, and what happens when a `MUTATE_FACT` target is
+`null`.
+
 By default a call has a 15-second deadline and 10 seconds per attempt, and the circuit
 breaker opens for 10 seconds after 5 failed calls in a row. Set `timeoutMs` lower for a
 request that cannot wait that long. LexQ still finishes and bills a decision that the

@@ -22,7 +22,12 @@ export type InputFactValue =
   | readonly InputFactValue[]
   | { readonly [key: string]: InputFactValue | undefined };
 
-/** Facts to send, by key. A fact whose value is null or undefined is left out of the request. */
+/**
+ * Facts to send, by key. `contexts` has the same type. A key whose value is `null` is sent
+ * as `null`, and a condition on it does not match, even in a rule that blocks. A key whose
+ * value is `undefined` is left out. If an enabled rule reads a fact that is left out, LexQ
+ * answers `P-015`.
+ */
 export type InputFacts = { readonly [key: string]: InputFactValue | undefined };
 
 /** Settings for a {@link LexqClient}. Only `apiKey` is required. */
