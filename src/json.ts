@@ -31,8 +31,10 @@ const CLASS_NAME = /^[A-Za-z_$][\w$]{0,99}$/;
 /**
  * Writes the request body once, so every attempt can send the same bytes.
  *
- * A top-level entry of `facts` or `contexts` whose value is null or undefined is left out.
- * Anything JSON cannot carry as written throws a TypeError naming where it is: NaN,
+ * A null is written as null at every level, so LexQ sees the key: a condition on a null
+ * value does not match, while a key left out of `facts` that an enabled rule reads fails
+ * with `P-015`. An object entry whose value is undefined is left out, as JSON.stringify
+ * does. Anything JSON cannot carry as written throws a TypeError naming where it is: NaN,
  * Infinity, a missing list element, a function, a symbol, a Map or another object that
  * is not plain, or a structure that contains itself.
  */
@@ -56,7 +58,7 @@ function reviveNumber(_key: string, value: unknown, context?: { readonly source?
 function encodeEntries(object: object, path: string): string {
   const entries: string[] = [];
   for (const [key, value] of Object.entries(object)) {
-    if (value === null || value === undefined) {
+    if (value === undefined) {
       continue;
     }
     entries.push(`${JSON.stringify(key)}:${encodeValue(value, `${path}.${key}`, ENTRY_LEVEL, new Set([object]))}`);

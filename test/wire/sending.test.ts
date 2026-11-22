@@ -43,16 +43,26 @@ test("a path in baseUrl is kept in front of the API path", async (t) => {
   assert.equal(lexq.received[0]?.path, "/gateway/lexq/api/v1/execution/groups/group-1");
 });
 
-test("a fact whose value is null or undefined is left out of the request", async (t) => {
+test("null is sent as null at every level, and a key whose value is undefined is left out", async (t) => {
   const lexq = await startFakeLexq(reply.decision());
   t.after(() => lexq.close());
   decisionOf(
     await clientFor(lexq).execute("group-1", {
-      facts: { userId: "u-1", couponCode: null, referrer: undefined, tags: ["a", null], profile: { tier: "VIP", note: undefined } },
+      facts: {
+        userId: "u-1",
+        couponCode: null,
+        referrer: undefined,
+        tags: ["a", null],
+        profile: { tier: "VIP", region: null, note: undefined },
+      },
+      contexts: { trafficKey: null, channel: undefined },
       fallback: fallbackValue,
     }),
   );
-  assert.equal(lexq.received[0]?.body, '{"facts":{"userId":"u-1","tags":["a",null],"profile":{"tier":"VIP"}}}');
+  assert.equal(
+    lexq.received[0]?.body,
+    '{"facts":{"userId":"u-1","couponCode":null,"tags":["a",null],"profile":{"tier":"VIP","region":null}},"contexts":{"trafficKey":null}}',
+  );
 });
 
 test("trafficKey stays where the caller put it", async (t) => {
