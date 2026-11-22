@@ -127,17 +127,53 @@ const unsendable: [string, Record<string, unknown>][] = [
 ];
 
 for (const [problem, options] of unsendable) {
-  test(`${problem} goes to the fallback as a TypeError, and nothing is sent`, async (t) => {
+  test(`${problem} goes to the fallback as invalid_input, and nothing is sent`, async (t) => {
     const lexq = await startFakeLexq(reply.decision());
     t.after(() => lexq.close());
     const result = fallbackOf(
       await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue, ...options } as never),
     );
-    assert.ok(result.error instanceof TypeError, `got ${result.error.name}`);
+    const { error } = result;
+    assert.ok(error instanceof LexqError, `got ${error.name}`);
+    assert.equal(error.reason, "invalid_input");
+    assert.ok(error.cause instanceof TypeError, "the TypeError that stopped the request is the cause");
+    assert.equal(error.message, error.cause.message);
+    assert.deepEqual(error.attempts, []);
+    assert.equal(error.status, undefined);
+    assert.equal(error.errorCode, undefined);
     assert.equal(result.value, "fallback");
     assert.equal(lexq.received.length, 0);
   });
 }
+
+test("when the idempotency key is why nothing was sent, the error leaves the key out", async (t) => {
+  const lexq = await startFakeLexq(reply.decision());
+  t.after(() => lexq.close());
+  const error = lexqErrorOf(
+    await clientFor(lexq).execute("group-1", {
+      facts: {},
+      idempotencyKey: "order-1\r\nx-api-key: stolen",
+      fallback: fallbackValue,
+    }),
+  );
+  assert.equal(error.reason, "invalid_input");
+  assert.equal(error.idempotencyKey, undefined);
+  assert.doesNotMatch(error.message, /order-1|stolen|[\r\n]/);
+});
+
+test("when a fact is why nothing was sent, the error keeps the call's key", async (t) => {
+  const lexq = await startFakeLexq(reply.decision());
+  t.after(() => lexq.close());
+  const error = lexqErrorOf(
+    await clientFor(lexq).execute("group-1", {
+      facts: { paymentAmount: Number.NaN },
+      idempotencyKey: "order-1",
+      fallback: fallbackValue,
+    }),
+  );
+  assert.equal(error.reason, "invalid_input");
+  assert.equal(error.idempotencyKey, "order-1");
+});
 
 const misuse: [string, string, Record<string, unknown>][] = [
   ["groupId is empty", "", {}],
