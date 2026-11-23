@@ -9,8 +9,8 @@ is in [CONTRACT.md](CONTRACT.md).
 - Sanitize pasted output. API keys, tenant IDs, and user IDs become placeholders.
   Apart from those, decision payloads stay exactly as they came back.
 - Response types list only the fields LexQ sends, taken from the Execution API
-  reference and a real response. The package's own result may add derived fields,
-  such as `isBlocked`.
+  reference and a real response. The package's own result adds only `source`, and
+  derives no field from LexQ's.
 - LexQ's own limits and error codes that the client relies on, such as how deep a
   request body may nest, live in `contracts/lexq-manifest.sdk.json`, and
   `src/contract.ts` is generated from it. Change them by regenerating both from LexQ's

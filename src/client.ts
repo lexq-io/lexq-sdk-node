@@ -188,7 +188,7 @@ export class LexqClient {
       let outcome: AttemptOutcome = await sendAttempt(request, limit);
       const durationMs = Math.round(performance.now() - startedAt);
       if (outcome.kind === "decision") {
-        const decision = toDecision(outcome.data, idempotencyKey);
+        const decision = toDecision(outcome.data);
         if (typeof decision !== "string") {
           return decision;
         }
@@ -308,7 +308,7 @@ function connectionMessage(cause: unknown): string {
  * are passed on as LexQ wrote them: the client computes nothing from them, so it checks only
  * that each list holds objects.
  */
-function toDecision(data: Readonly<Record<string, unknown>>, idempotencyKey: string): DecisionResult | string {
+function toDecision(data: Readonly<Record<string, unknown>>): DecisionResult | string {
   const { traceId, executedAt, totalProcessingTimeMs } = data;
   if (typeof traceId !== "string" || traceId === "") {
     return "without a traceId";
@@ -343,26 +343,22 @@ function toDecision(data: Readonly<Record<string, unknown>>, idempotencyKey: str
   if (!decisionTraces) {
     return "whose decisionTraces is not a list of objects";
   }
-  const facts: Facts = { ...inputFacts, ...mutatedFacts, ...generatedVariables };
   return {
     // Every field LexQ sent, so one it adds later reaches the caller before the types name
-    // it. The fields below come after it, so the checked values and the client's own fields
-    // win over a field of the same name in `data`.
+    // it. The client merges nothing, and `source` is the only field of its own. The fields
+    // below come after it, so `source` and the checked values win over a field of the same
+    // name in `data`. A layer or a list that LexQ left out is empty.
     ...data,
     source: "lexq",
     traceId,
     executedAt,
     totalProcessingTimeMs: totalProcessingTimeMs.toNumber(),
-    // BLOCK sets isBlocked in generatedVariables, or in mutatedFacts when the request sent it.
-    isBlocked: facts.isBlocked === true,
-    facts,
     inputFacts,
     inputContexts,
     mutatedFacts,
     generatedVariables,
     executionTraces,
     decisionTraces,
-    idempotencyKey,
   };
 }
 

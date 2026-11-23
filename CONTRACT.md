@@ -129,7 +129,8 @@ default values belong in the code next to their tests, not in this file.
 
 ### Returning a decision
 
-- Return every field LexQ sends in `data`. Besides the facts and `traceId`, that is
+- Return every field LexQ sends in `data`, and add only `source`, which tells LexQ's
+  decision from the fallback's value. Besides the facts and `traceId`, that is
   `executedAt`, `totalProcessingTimeMs`, `inputContexts`, `executionTraces`, and
   `decisionTraces`. A field LexQ adds later reaches the caller too, before the package's
   types name it. When they do, they make it optional, and the client accepts it when it
@@ -137,15 +138,24 @@ default values belong in the code next to their tests, not in this file.
   before the field existed, with the field `null`, `0`, or `false`. A test reads the
   single-group response the Execution API reference shows and fails when one of its
   fields is missing from the result.
-- Return the final facts as well as the three layers LexQ sends. `inputFacts` holds
-  the facts as LexQ received them, `mutatedFacts` the facts a rule changed, and
-  `generatedVariables` the keys the request did not send, such as a `SET_FACT` target.
-  The final facts are `{ ...inputFacts, ...mutatedFacts, ...generatedVariables }`.
-- Make a block hard to miss. A `BLOCK` action does not fail the call. It sets
-  `isBlocked`, which arrives in `generatedVariables`, or in `mutatedFacts` if the
-  request sent `isBlocked` itself. The result for LexQ's decision has a top-level
-  `isBlocked` that is `true` when the final facts have `isBlocked: true`, and `false`
-  otherwise. A fallback's value has no such field.
+- A layer, the contexts, or a trace list that LexQ leaves out or sends as `null` is
+  empty in the result.
+- Return the facts in the three layers LexQ sends, and never merge them. `inputFacts`
+  holds the facts as LexQ received them. `mutatedFacts` holds the new value of each fact
+  the request sent that a rule changed. `generatedVariables` holds the keys the request
+  did not send, such as a `SET_FACT` target, and keys that only describe the decision,
+  such as `paymentAmount__delta`, how much `MUTATE_FACT` actions changed `paymentAmount`.
+  The documentation must say where a new value is, and that a caller who sends a
+  decision's facts again leaves the `__delta` keys out: LexQ answers a key in `facts`
+  that ends in `__delta` with `400` (`P-068`).
+- Make a block hard to miss. A `BLOCK` action does not fail the call. It writes
+  `isBlocked: true` and `blockReason`, which arrive in `generatedVariables` when the
+  request did not send them. A request that sends `isBlocked` itself finds that key
+  elsewhere: in `mutatedFacts` when it sent another value, and only in `inputFacts` when
+  it sent `true`, because the value did not change. The documentation must show a check
+  that reads all three layers, and say to send an earlier block under another key, such
+  as `previouslyBlocked`, because a request that sends `isBlocked: true` looks blocked
+  whether or not a `BLOCK` ran.
 - Return `data.traceId`. It is the execution's audit handle, and the caller stores it
   with the record the decision applies to. A retry that LexQ served from the
   idempotency key returns the original `traceId` and `executedAt`.

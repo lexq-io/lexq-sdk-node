@@ -26,8 +26,7 @@ test("an amount with more than 34 significant digits goes out and comes back wit
   assert.equal(lexq.received[0]?.body, `{"facts":{"paymentAmount":${SENT}}}`);
   assert.deepEqual(decision.inputFacts.paymentAmount, new Decimal(SENT));
   assert.equal(String(decision.mutatedFacts.paymentAmount), DISCOUNTED);
-  assert.equal(String(decision.facts.paymentAmount), DISCOUNTED);
-  assert.equal(String(decision.facts.paymentAmount__delta), DELTA);
+  assert.equal(String(decision.generatedVariables.paymentAmount__delta), DELTA);
 });
 
 test("every number in the facts comes back as a Decimal with its text as written", async (t) => {
@@ -38,8 +37,8 @@ test("every number in the facts comes back as a Decimal with its text as written
     ),
   );
   t.after(() => lexq.close());
-  const { facts } = decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue }));
-  const values = facts.values;
+  const { inputFacts } = decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue }));
+  const values = inputFacts.values;
   assert.ok(Array.isArray(values));
   assert.deepEqual(
     values.map((value) => {
@@ -48,7 +47,7 @@ test("every number in the facts comes back as a Decimal with its text as written
     }),
     written,
   );
-  assert.deepEqual(facts.nested, { count: new Decimal("3") });
+  assert.deepEqual(inputFacts.nested, { count: new Decimal("3") });
 });
 
 test("a number in the contexts or in a rule's action keeps every digit, and the processing time is a number", async (t) => {
@@ -78,7 +77,7 @@ test("numbers, bigints, and Decimals go out as JSON numbers", async (t) => {
   );
 });
 
-test("facts from a decision can be sent back without losing a digit", async (t) => {
+test("a number from a decision can be sent back without losing a digit", async (t) => {
   const lexq = await startFakeLexq(
     reply.decision(
       `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"paymentAmount":${SENT}},"mutatedFacts":{"paymentAmount":${DISCOUNTED}},"generatedVariables":{}}`,
@@ -87,7 +86,7 @@ test("facts from a decision can be sent back without losing a digit", async (t) 
   t.after(() => lexq.close());
   const client = clientFor(lexq);
   const first = decisionOf(await client.execute("group-1", { facts: { paymentAmount: new Decimal(SENT) }, fallback: fallbackValue }));
-  await client.execute("group-1", { facts: first.facts, fallback: fallbackValue });
+  await client.execute("group-1", { facts: { paymentAmount: first.mutatedFacts.paymentAmount }, fallback: fallbackValue });
   assert.equal(lexq.received[1]?.body, `{"facts":{"paymentAmount":${DISCOUNTED}}}`);
 });
 

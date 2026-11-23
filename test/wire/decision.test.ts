@@ -66,13 +66,20 @@ test("the decision carries the response the Execution API reference shows", asyn
   ]);
 });
 
-test("every field of LexQ's data is in the decision", async () => {
+test("the decision holds every field of LexQ's data and source, and nothing else", async () => {
   const decision = await decide(DOCUMENTED);
-  const fields = Object.keys(JSON.parse(DOCUMENTED) as object);
-  assert.deepEqual(
-    fields.filter((field) => !Object.hasOwn(decision, field)),
-    [],
-  );
+  const fields = [...Object.keys(JSON.parse(DOCUMENTED) as object), "source"];
+  assert.deepEqual(Object.keys(decision).sort(), fields.sort());
+});
+
+test("the decision's type has none of the fields the client used to add", async () => {
+  const decision = await decide(DOCUMENTED);
+  // @ts-expect-error The client does not merge the fact layers.
+  assert.equal(decision.facts, undefined);
+  // @ts-expect-error A block is in the layers, where LexQ put it.
+  assert.equal(decision.isBlocked, undefined);
+  // @ts-expect-error The idempotency key is the caller's, and a failed call's error carries it.
+  assert.equal(decision.idempotencyKey, undefined);
 });
 
 test("a field LexQ adds later reaches the caller, with its numbers as Decimals", async () => {
@@ -80,14 +87,15 @@ test("a field LexQ adds later reaches the caller, with its numbers as Decimals",
   assert.deepEqual((decision as unknown as Record<string, unknown>).riskSummary, { score: n("12345678901234567890.5"), label: "low" });
 });
 
-test("the client's own fields win over fields of the same name in LexQ's data", async () => {
+test("source wins over a field of the same name in LexQ's data, and LexQ's other fields stay as sent", async () => {
   const decision = await decide(
     `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"a":1},"source":"engine","facts":{"b":2},"isBlocked":"yes","idempotencyKey":"other"}`,
   );
+  const fields = decision as unknown as Record<string, unknown>;
   assert.equal(decision.source, "lexq");
-  assert.deepEqual(decision.facts, { a: n("1") });
-  assert.equal(decision.isBlocked, false);
-  assert.notEqual(decision.idempotencyKey, "other");
+  assert.deepEqual(fields.facts, { b: n("2") });
+  assert.equal(fields.isBlocked, "yes");
+  assert.equal(fields.idempotencyKey, "other");
 });
 
 test("a field named __proto__ in LexQ's data stays a field and changes no prototype", async () => {
@@ -97,42 +105,21 @@ test("a field named __proto__ in LexQ's data stays a field and changes no protot
   assert.equal(Object.getPrototypeOf(decision), Object.prototype);
 });
 
-test("the final facts are inputFacts, then mutatedFacts, then generatedVariables", async () => {
+test("the fact layers come back as LexQ sent them, each on its own", async () => {
   const decision = await decide(
-    `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"a":1,"b":2,"c":3},"mutatedFacts":{"b":20},"generatedVariables":{"c":30,"d":40}}`,
+    `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"a":1,"b":2},"mutatedFacts":{"b":20},"generatedVariables":{"c":30}}`,
   );
-  assert.deepEqual(decision.facts, { a: n("1"), b: n("20"), c: n("30"), d: n("40") });
-  assert.deepEqual(decision.inputFacts, { a: n("1"), b: n("2"), c: n("3") });
+  assert.deepEqual(decision.inputFacts, { a: n("1"), b: n("2") });
   assert.deepEqual(decision.mutatedFacts, { b: n("20") });
-  assert.deepEqual(decision.generatedVariables, { c: n("30"), d: n("40") });
+  assert.deepEqual(decision.generatedVariables, { c: n("30") });
 });
 
-test("a block that arrives in generatedVariables sets isBlocked", async () => {
+test("a block comes back in generatedVariables, where LexQ put it", async () => {
   const decision = await decide(
     `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"userId":"u-1"},"mutatedFacts":{},"generatedVariables":{"isBlocked":true,"blockReason":"Policy Violation"}}`,
   );
-  assert.equal(decision.isBlocked, true);
-  assert.equal(decision.facts.blockReason, "Policy Violation");
+  assert.deepEqual(decision.generatedVariables, { isBlocked: true, blockReason: "Policy Violation" });
 });
-
-test("a block that arrives in mutatedFacts, because the request sent isBlocked, sets isBlocked", async () => {
-  const decision = await decide(
-    `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"isBlocked":false},"mutatedFacts":{"isBlocked":true},"generatedVariables":{}}`,
-  );
-  assert.equal(decision.isBlocked, true);
-});
-
-const notBlocked: [string, string][] = [
-  ["no isBlocked", `{"traceId":"t",${CALL_FIELDS},"inputFacts":{},"mutatedFacts":{},"generatedVariables":{}}`],
-  ["isBlocked false", `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"isBlocked":false},"mutatedFacts":{},"generatedVariables":{}}`],
-  ["isBlocked as the string true", `{"traceId":"t",${CALL_FIELDS},"inputFacts":{},"mutatedFacts":{},"generatedVariables":{"isBlocked":"true"}}`],
-];
-
-for (const [answer, data] of notBlocked) {
-  test(`with ${answer}, isBlocked is false`, async () => {
-    assert.equal((await decide(data)).isBlocked, false);
-  });
-}
 
 test("traceId comes back with the decision", async () => {
   const decision = await decide(
@@ -148,14 +135,26 @@ test("a layer, the contexts, or a trace list that LexQ leaves out is empty", asy
   assert.deepEqual(decision.inputContexts, {});
   assert.deepEqual(decision.executionTraces, []);
   assert.deepEqual(decision.decisionTraces, []);
-  assert.deepEqual(decision.facts, { a: "x" });
+  assert.deepEqual(decision.inputFacts, { a: "x" });
+});
+
+test("a layer, the contexts, or a trace list that LexQ sends as null is empty", async () => {
+  const decision = await decide(
+    `{"traceId":"t",${CALL_FIELDS},"inputFacts":null,"inputContexts":null,"mutatedFacts":null,"generatedVariables":null,"executionTraces":null,"decisionTraces":null}`,
+  );
+  assert.deepEqual(decision.inputFacts, {});
+  assert.deepEqual(decision.inputContexts, {});
+  assert.deepEqual(decision.mutatedFacts, {});
+  assert.deepEqual(decision.generatedVariables, {});
+  assert.deepEqual(decision.executionTraces, []);
+  assert.deepEqual(decision.decisionTraces, []);
 });
 
 test("a fact named __proto__ stays a fact and changes no prototype", async () => {
   const decision = await decide(
     `{"traceId":"t",${CALL_FIELDS},"inputFacts":{"__proto__":{"polluted":true}},"mutatedFacts":{},"generatedVariables":{}}`,
   );
-  assert.equal(Object.hasOwn(decision.facts, "__proto__"), true);
+  assert.equal(Object.hasOwn(decision.inputFacts, "__proto__"), true);
   assert.equal(({} as Record<string, unknown>).polluted, undefined);
-  assert.equal(Object.getPrototypeOf(decision.facts), Object.prototype);
+  assert.equal(Object.getPrototypeOf(decision.inputFacts), Object.prototype);
 });

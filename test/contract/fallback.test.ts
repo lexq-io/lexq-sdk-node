@@ -101,11 +101,7 @@ test("the result says whether it is LexQ's decision or the fallback's value", as
   const decided: ExecuteResult<string> = await client.execute("group-1", { facts: {}, fallback: fallbackValue });
   const fellBack: ExecuteResult<string> = await client.execute("group-1", { facts: {}, fallback: fallbackValue });
   assert.equal(decisionOf(decided).source, "lexq");
-  const fallback = fallbackOf(fellBack);
-  assert.equal(fallback.source, "fallback");
-  // A fallback's value has no isBlocked.
-  // @ts-expect-error FallbackResult has no isBlocked.
-  assert.equal(fallback.isBlocked, undefined);
+  assert.equal(fallbackOf(fellBack).source, "fallback");
 });
 
 const unsendable: [string, Record<string, unknown>][] = [
