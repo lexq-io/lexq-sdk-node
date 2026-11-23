@@ -138,13 +138,16 @@ default values belong in the code next to their tests, not in this file.
   before the field existed, with the field `null`, `0`, or `false`. A test reads the
   single-group response the Execution API reference shows and fails when one of its
   fields is missing from the result.
+- A layer, the contexts, or a trace list that LexQ leaves out or sends as `null` is
+  empty in the result.
 - Return the facts in the three layers LexQ sends, and never merge them. `inputFacts`
   holds the facts as LexQ received them. `mutatedFacts` holds the new value of each fact
   the request sent that a rule changed. `generatedVariables` holds the keys the request
   did not send, such as a `SET_FACT` target, and keys that only describe the decision,
   such as `paymentAmount__delta`, how much `MUTATE_FACT` actions changed `paymentAmount`.
   The documentation must say where a new value is, and that a caller who sends a
-  decision's facts again leaves the `__delta` keys out.
+  decision's facts again leaves the `__delta` keys out: LexQ answers a key in `facts`
+  that ends in `__delta` with `400` (`P-068`).
 - Make a block hard to miss. A `BLOCK` action does not fail the call. It writes
   `isBlocked: true` and `blockReason`, which arrive in `generatedVariables` when the
   request did not send them. A request that sends `isBlocked` itself finds that key

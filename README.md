@@ -57,14 +57,18 @@ if (result.source === "lexq") {
 }
 ```
 
-A decision is LexQ's `data` as it came back, with `source` added. The facts come in three
+A decision is LexQ's `data` as it came back, with `source` added. A layer or a trace list
+that LexQ leaves out is empty, so you can read it without a check. The facts come in three
 layers: `inputFacts` as LexQ received them, `mutatedFacts` with the new value of each fact
-a rule changed, and `generatedVariables` with the keys the request did not send. A
-`MUTATE_FACT` that changes `paymentAmount` also adds `paymentAmount__delta` to
-`generatedVariables`: how much it changed, not the new value. To send a decision's facts
-to another call, take the new values from `mutatedFacts` and leave the `__delta` keys out.
-Send an earlier block under another key, such as `previouslyBlocked`: a request that sends
-`isBlocked: true` looks blocked whether or not a rule blocked it.
+the request sent that a rule changed, and `generatedVariables` with the keys the request
+did not send, such as a `SET_FACT` target. A `MUTATE_FACT` that changes `paymentAmount`
+also adds `paymentAmount__delta` to `generatedVariables`: how much it changed, not the new
+value. To send a decision's facts to another call, take each value from `mutatedFacts` or
+`generatedVariables` when it is there and from `inputFacts` otherwise, and leave out the
+`__delta` keys and `isBlocked`. LexQ answers a request whose `facts` holds a key that ends
+in `__delta` with `400` (`P-068`), and the fallback runs. Send an earlier block under
+another key, such as `previouslyBlocked`: a request that sends `isBlocked: true` looks
+blocked whether or not a rule blocked it.
 
 Every number in a decision's facts, contexts, and traces is a `Decimal`, because LexQ
 calculates in decimal and an amount can have more digits than a JavaScript number

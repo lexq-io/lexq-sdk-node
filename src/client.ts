@@ -345,8 +345,9 @@ function toDecision(data: Readonly<Record<string, unknown>>): DecisionResult | s
   }
   return {
     // Every field LexQ sent, so one it adds later reaches the caller before the types name
-    // it. The client merges nothing and adds only `source`. The fields below come after it,
-    // so `source` and the checked values win over a field of the same name in `data`.
+    // it. The client merges nothing, and `source` is the only field of its own. The fields
+    // below come after it, so `source` and the checked values win over a field of the same
+    // name in `data`. A layer or a list that LexQ left out is empty.
     ...data,
     source: "lexq",
     traceId,

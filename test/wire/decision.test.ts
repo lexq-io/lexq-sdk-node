@@ -107,11 +107,11 @@ test("a field named __proto__ in LexQ's data stays a field and changes no protot
 
 test("the fact layers come back as LexQ sent them, each on its own", async () => {
   const decision = await decide(
-    `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"a":1,"b":2,"c":3},"mutatedFacts":{"b":20},"generatedVariables":{"c":30,"d":40}}`,
+    `{"traceId":"trace-1",${CALL_FIELDS},"inputFacts":{"a":1,"b":2},"mutatedFacts":{"b":20},"generatedVariables":{"c":30}}`,
   );
-  assert.deepEqual(decision.inputFacts, { a: n("1"), b: n("2"), c: n("3") });
+  assert.deepEqual(decision.inputFacts, { a: n("1"), b: n("2") });
   assert.deepEqual(decision.mutatedFacts, { b: n("20") });
-  assert.deepEqual(decision.generatedVariables, { c: n("30"), d: n("40") });
+  assert.deepEqual(decision.generatedVariables, { c: n("30") });
 });
 
 test("a block comes back in generatedVariables, where LexQ put it", async () => {
@@ -136,6 +136,18 @@ test("a layer, the contexts, or a trace list that LexQ leaves out is empty", asy
   assert.deepEqual(decision.executionTraces, []);
   assert.deepEqual(decision.decisionTraces, []);
   assert.deepEqual(decision.inputFacts, { a: "x" });
+});
+
+test("a layer, the contexts, or a trace list that LexQ sends as null is empty", async () => {
+  const decision = await decide(
+    `{"traceId":"t",${CALL_FIELDS},"inputFacts":null,"inputContexts":null,"mutatedFacts":null,"generatedVariables":null,"executionTraces":null,"decisionTraces":null}`,
+  );
+  assert.deepEqual(decision.inputFacts, {});
+  assert.deepEqual(decision.inputContexts, {});
+  assert.deepEqual(decision.mutatedFacts, {});
+  assert.deepEqual(decision.generatedVariables, {});
+  assert.deepEqual(decision.executionTraces, []);
+  assert.deepEqual(decision.decisionTraces, []);
 });
 
 test("a fact named __proto__ stays a fact and changes no prototype", async () => {

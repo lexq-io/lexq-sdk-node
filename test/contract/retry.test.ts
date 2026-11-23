@@ -54,6 +54,15 @@ test("without a key, the client generates one per call and uses it for every att
   assert.notEqual(nextCall, attemptOne);
 });
 
+test("a key the client generates reaches the fallback's error, so the call can be repeated with it", async (t) => {
+  const lexq = await startFakeLexq(reply.unavailable());
+  t.after(() => lexq.close());
+  const error = lexqErrorOf(await clientFor(lexq, { retry: false }).execute("group-1", { facts: {}, fallback: fallbackValue }));
+  const sent = String(lexq.received[0]?.headers["idempotency-key"]);
+  assert.match(sent, UUID);
+  assert.equal(error.idempotencyKey, sent);
+});
+
 test("a caller's key is sent unchanged, even past the 255 characters LexQ accepts", async (t) => {
   const lexq = await startFakeLexq(reply.error(400, "I-003"));
   t.after(() => lexq.close());

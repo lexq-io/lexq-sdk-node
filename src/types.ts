@@ -97,8 +97,15 @@ export interface ExecuteOptions<T> {
 
 /**
  * LexQ's decision: every field in LexQ's `data`, and `source`. The client merges nothing, so
- * the facts come back in the three layers LexQ sends. A field LexQ adds after this release
- * is there as well, before this type names it.
+ * the facts come back in the three layers LexQ sends. A layer, the contexts, or a trace list
+ * that LexQ leaves out or sends as `null` is empty. A field LexQ adds after this release is
+ * there as well, before this type names it.
+ *
+ * A `BLOCK` action does not fail the call. It writes `isBlocked: true` and `blockReason`. A
+ * key the request did not send comes back in `generatedVariables`, a key it sent with
+ * another value in `mutatedFacts`, and a key it sent with the same value only in
+ * `inputFacts`. So check `isBlocked` in all three layers, and send an earlier block under
+ * another key, such as `previouslyBlocked`.
  */
 export interface DecisionResult {
   readonly source: "lexq";
@@ -119,11 +126,10 @@ export interface DecisionResult {
   /** The new value of each fact the request sent that a rule changed. */
   readonly mutatedFacts: Facts;
   /**
-   * Keys the request did not send, such as a `SET_FACT` target. A `BLOCK` action adds
-   * `isBlocked: true` and `blockReason` here when the request did not send them. A rule that
-   * changes `paymentAmount` with `MUTATE_FACT` adds `paymentAmount__delta`: how much it
-   * changed, not the new value, which is in `mutatedFacts`. Leave the `__delta` keys out
-   * when you send a decision's facts again.
+   * Keys the request did not send, such as a `SET_FACT` target. A rule that changes
+   * `paymentAmount` with `MUTATE_FACT` adds `paymentAmount__delta`: how much it changed, not
+   * the new value, which is in `mutatedFacts`. Leave the `__delta` keys out when you send a
+   * decision's facts again.
    */
   readonly generatedVariables: Facts;
   /**
