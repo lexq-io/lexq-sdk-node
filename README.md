@@ -47,8 +47,10 @@ if (result.source === "lexq") {
   // LexQ's data as it came back. Store result.traceId with the order.
   // A rule that changed paymentAmount put the new value in mutatedFacts.
   const amount = result.mutatedFacts.paymentAmount ?? result.inputFacts.paymentAmount;
-  // A BLOCK action does not fail the call. It adds isBlocked: true to generatedVariables.
-  const blocked = result.generatedVariables.isBlocked === true;
+  // A BLOCK action does not fail the call. It sets isBlocked: true in one of the layers.
+  const blocked = [result.generatedVariables, result.mutatedFacts, result.inputFacts].some(
+    (layer) => layer.isBlocked === true,
+  );
   // result.decisionTraces says why each rule fired or did not.
 } else {
   // result.value is what the fallback returned, and result.error says why.
@@ -62,7 +64,7 @@ a rule changed, and `generatedVariables` with the keys the request did not send.
 `generatedVariables`: how much it changed, not the new value. To send a decision's facts
 to another call, take the new values from `mutatedFacts` and leave the `__delta` keys out.
 Send an earlier block under another key, such as `previouslyBlocked`: a request that sends
-`isBlocked` itself gets no `isBlocked` in `generatedVariables`.
+`isBlocked: true` looks blocked whether or not a rule blocked it.
 
 Every number in a decision's facts, contexts, and traces is a `Decimal`, because LexQ
 calculates in decimal and an amount can have more digits than a JavaScript number

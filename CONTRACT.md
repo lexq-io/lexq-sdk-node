@@ -149,9 +149,10 @@ default values belong in the code next to their tests, not in this file.
   `isBlocked: true` and `blockReason`, which arrive in `generatedVariables` when the
   request did not send them. A request that sends `isBlocked` itself finds that key
   elsewhere: in `mutatedFacts` when it sent another value, and only in `inputFacts` when
-  it sent `true`, because the value did not change. The documentation must show how to
-  check `generatedVariables.isBlocked`, and say to send an earlier block under another
-  key, such as `previouslyBlocked`.
+  it sent `true`, because the value did not change. The documentation must show a check
+  that reads all three layers, and say to send an earlier block under another key, such
+  as `previouslyBlocked`, because a request that sends `isBlocked: true` looks blocked
+  whether or not a `BLOCK` ran.
 - Return `data.traceId`. It is the execution's audit handle, and the caller stores it
   with the record the decision applies to. A retry that LexQ served from the
   idempotency key returns the original `traceId` and `executedAt`.
