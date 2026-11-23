@@ -19,7 +19,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{1
 test("every attempt of a call sends the same Idempotency-Key and the same bytes", async (t) => {
   const lexq = await startFakeLexq(reply.unavailable(), reply.text(502, "<html>Bad Gateway</html>"), reply.decision());
   t.after(() => lexq.close());
-  const decision = decisionOf(
+  decisionOf(
     await clientFor(lexq).execute("group-1", {
       facts: {
         paymentAmount: new Decimal("150000.10"),
@@ -38,21 +38,20 @@ test("every attempt of a call sends the same Idempotency-Key and the same bytes"
     assert.equal(request.headers["idempotency-key"], "order-12345");
     assert.deepEqual(request.bytes, lexq.received[0]?.bytes);
   }
-  assert.equal(decision.idempotencyKey, "order-12345");
 });
 
 test("without a key, the client generates one per call and uses it for every attempt", async (t) => {
   const lexq = await startFakeLexq(reply.unavailable(), reply.decision());
   t.after(() => lexq.close());
   const client = clientFor(lexq);
-  const first = decisionOf(await client.execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
-  const second = decisionOf(await client.execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
-  const [attemptOne, attemptTwo, nextCall] = lexq.received;
-  assert.match(first.idempotencyKey, UUID);
-  assert.equal(attemptOne?.headers["idempotency-key"], first.idempotencyKey);
-  assert.equal(attemptTwo?.headers["idempotency-key"], first.idempotencyKey);
-  assert.equal(nextCall?.headers["idempotency-key"], second.idempotencyKey);
-  assert.notEqual(first.idempotencyKey, second.idempotencyKey);
+  decisionOf(await client.execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
+  decisionOf(await client.execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
+  const [attemptOne, attemptTwo, nextCall] = lexq.received.map((request) => String(request.headers["idempotency-key"]));
+  assert.equal(lexq.received.length, 3);
+  assert.match(attemptOne ?? "", UUID);
+  assert.equal(attemptTwo, attemptOne);
+  assert.match(nextCall ?? "", UUID);
+  assert.notEqual(nextCall, attemptOne);
 });
 
 test("a caller's key is sent unchanged, even past the 255 characters LexQ accepts", async (t) => {

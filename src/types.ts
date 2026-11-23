@@ -96,8 +96,9 @@ export interface ExecuteOptions<T> {
 }
 
 /**
- * LexQ's decision: every field LexQ returns for the call, the final facts, and `isBlocked`.
- * A field LexQ adds after this release is there as well, before this type names it.
+ * LexQ's decision: every field in LexQ's `data`, and `source`. The client merges nothing, so
+ * the facts come back in the three layers LexQ sends. A field LexQ adds after this release
+ * is there as well, before this type names it.
  */
 export interface DecisionResult {
   readonly source: "lexq";
@@ -111,17 +112,19 @@ export interface DecisionResult {
   readonly executedAt: string;
   /** How long LexQ took to run the decision, in milliseconds. */
   readonly totalProcessingTimeMs: number;
-  /** `true` when a `BLOCK` action ran: the final facts have `isBlocked: true`. */
-  readonly isBlocked: boolean;
-  /** The final facts: `{ ...inputFacts, ...mutatedFacts, ...generatedVariables }`. */
-  readonly facts: Facts;
   /** The facts as LexQ received them. */
   readonly inputFacts: Facts;
   /** The `contexts` the request sent, or `{}` when it sent none. */
   readonly inputContexts: Facts;
-  /** The facts a rule changed. */
+  /** The new value of each fact the request sent that a rule changed. */
   readonly mutatedFacts: Facts;
-  /** Values the request did not send, such as a `SET_FACT` target or `isBlocked`. */
+  /**
+   * Keys the request did not send, such as a `SET_FACT` target. A `BLOCK` action adds
+   * `isBlocked: true` and `blockReason` here when the request did not send them. A rule that
+   * changes `paymentAmount` with `MUTATE_FACT` adds `paymentAmount__delta`: how much it
+   * changed, not the new value, which is in `mutatedFacts`. Leave the `__delta` keys out
+   * when you send a decision's facts again.
+   */
   readonly generatedVariables: Facts;
   /**
    * Each rule LexQ evaluated, in the order it decided: by group priority, then by rule
@@ -130,8 +133,6 @@ export interface DecisionResult {
   readonly executionTraces: readonly ExecutionTrace[];
   /** Why each rule LexQ evaluated fired or did not, in the same order as `executionTraces`. */
   readonly decisionTraces: readonly DecisionTrace[];
-  /** The `Idempotency-Key` the call used. */
-  readonly idempotencyKey: string;
 }
 
 /** How LexQ evaluated one rule. */
