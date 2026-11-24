@@ -1,0 +1,13 @@
+{
+  "note": "Written by the sync script of the LexQ SDK specification. SPEC.md and values.json in this directory are unchanged copies of the version below, with the SHA-256 of each. Do not edit them or this file.",
+  "version": "v0.1.0",
+  "commit": "dc7619200d0e8cd5968ad9eb127ddc258712a6b4",
+  "files": {
+    "SPEC.md": {
+      "sha256": "798bc3d1c9494b5b126b2711f7ff5668225aca636853c81e2a7faca8ae49c186"
+    },
+    "values.json": {
+      "sha256": "a159acf39c979badc6060c7168470c4ee5d71cc0ca6a3bea28245902083dda4f"
+    }
+  }
+}

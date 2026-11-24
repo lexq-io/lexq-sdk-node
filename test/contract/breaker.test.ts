@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "node:test";
 import { LexqClient } from "../../src/index.ts";
-import { MAX_ATTEMPTS } from "../../src/retry.ts";
 import {
   TEST_API_KEY,
   closedPort,
@@ -16,20 +15,22 @@ import {
   startFakeLexq,
   type Responder,
 } from "../support/fake-lexq.ts";
+import { spec } from "../support/spec.ts";
 
+const { breakerThreshold, maxAttempts } = spec.defaults;
 const failing = { facts: {}, retry: false, fallback: fallbackValue } as const;
 
 test("the breaker is on by default and opens at its threshold, so calls skip the network", async (t) => {
   const lexq = await startFakeLexq(reply.unavailable());
   t.after(() => lexq.close());
   const client = clientFor(lexq);
-  for (let call = 1; call <= 5; call += 1) {
+  for (let call = 1; call <= breakerThreshold; call += 1) {
     assert.equal(lexqErrorOf(await client.execute("group-1", failing)).reason, "response");
   }
   const error = lexqErrorOf(await client.execute("group-1", failing));
   assert.equal(error.reason, "breaker_open");
   assert.deepEqual(error.attempts, []);
-  assert.equal(lexq.received.length, 5);
+  assert.equal(lexq.received.length, breakerThreshold);
 });
 
 test("the breaker counts calls, not attempts", async (t) => {
@@ -37,7 +38,7 @@ test("the breaker counts calls, not attempts", async (t) => {
   t.after(() => lexq.close());
   const client = clientFor(lexq, { breaker: { threshold: 2 } });
   const first = lexqErrorOf(await client.execute("group-1", { facts: {}, timeoutMs: 10_000, fallback: fallbackValue }));
-  assert.equal(first.attempts.length, MAX_ATTEMPTS);
+  assert.equal(first.attempts.length, maxAttempts);
   assert.notEqual(lexqErrorOf(await client.execute("group-1", failing)).reason, "breaker_open");
   assert.equal(lexqErrorOf(await client.execute("group-1", failing)).reason, "breaker_open");
 });
@@ -54,8 +55,8 @@ const counted: [string, () => Promise<{ client: LexqClient; close: () => Promise
       close: async () => {},
     };
   }],
-  ["500", async () => {
-    const lexq = await startFakeLexq(reply.error(500, "P-003"));
+  ["500 with a code other than P-003", async () => {
+    const lexq = await startFakeLexq(reply.error(500, "C-004"));
     return { client: clientFor(lexq, { breaker: { threshold: 1 } }), close: () => lexq.close() };
   }],
   ["502 with a body that is not JSON", async () => {
@@ -73,12 +74,16 @@ for (const [ending, setUp] of counted) {
   });
 }
 
+// P-003 says an action of a matched rule failed: LexQ answered, so it resets the count like
+// any other answer, whatever its status.
 const resets: [string, Responder][] = [
   ["a decision", reply.decision()],
   ["400 with P-015", reply.error(400, "P-015")],
   ["409 with I-001", reply.error(409, "I-001")],
   ["429", reply.error(429, "C-007")],
   ["a redirect", reply.text(302, "", { location: "/elsewhere" })],
+  ["500 with P-003", reply.error(500, "P-003")],
+  ["503 with P-003", reply.error(503, "P-003")],
 ];
 
 for (const [answer, responder] of resets) {

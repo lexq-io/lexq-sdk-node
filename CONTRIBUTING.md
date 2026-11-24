@@ -1,7 +1,8 @@
 # Contributing
 
-These rules cover every change to this repository. What the package itself must do
-is in [CONTRACT.md](CONTRACT.md).
+These rules cover every change to this repository. What the package itself must do is
+in the LexQ SDK specification, copied in [spec/SPEC.md](spec/SPEC.md), and
+[CONTRACT.md](CONTRACT.md) names the version this package follows.
 
 - Unit and contract tests use a fake server. A change to how a call is sent or read
   also gets one real call against a live tenant before it lands. Outputs pasted into
@@ -11,19 +12,28 @@ is in [CONTRACT.md](CONTRACT.md).
 - Response types list only the fields LexQ sends, taken from the Execution API
   reference and a real response. The package's own result adds only `source`, and
   derives no field from LexQ's.
-- LexQ's own limits and error codes that the client relies on, such as how deep a
-  request body may nest, live in `contracts/lexq-manifest.sdk.json`, and
-  `src/contract.ts` is generated from it. Change them by regenerating both from LexQ's
-  contract manifest, never by hand. `npm test` fails when the two files disagree or
-  the documentation states another value.
+- `spec/` holds `SPEC.md` and `values.json`, unchanged copies of one version of the
+  specification, and `spec.lock`, which records that version and the SHA-256 of each
+  copy. Never edit these files by hand. To report a problem in the specification, open
+  an issue in this repository. Maintainers replace the three files together when the
+  package moves to another version of the specification, in one pull request that also
+  names that version in `CONTRACT.md` and either changes the code and the tests to match
+  or lists in `CONTRACT.md` what the code does not do yet. `npm test` fails when `spec/`
+  holds anything but the three files, when a copy's SHA-256 differs from the lock, or
+  when `CONTRACT.md` names a version other than the lock's, names the lock's more than
+  once, or leaves it out. Any string written like `v1.2.3` counts as a version, even one
+  meant as a tag of this package.
+- `spec/values.json` holds the values the specification sets: LexQ's enums and
+  constants, the error codes the specification names, and the defaults.
+  `scripts/gen-contract.mjs` writes `src/contract.ts` from it, and the tests take their
+  expected values from it. `npm test` also fails when `src/contract.ts` was changed by
+  hand, or when the documentation gives a default, a LexQ constant, or an error status
+  that differs from `spec/values.json`.
+- `contracts/lexq-manifest.sdk.json` holds a subset of those values. The same script
+  writes it, and a later change removes it.
 - Add a runtime dependency only with a reason in the pull request. Every dependency
   ships into every customer's server.
-- Log nothing by default. Errors carry the status, `errorCode`, LexQ's `message`, and
-  the idempotency key. They never carry the API key, a fact's value, or a raw response
-  body, because callers log errors. For the same reason, every message is one line of
-  bounded length, even where it quotes text the client did not write, such as LexQ's
-  message or a key in `facts`. Report anything else through the result and an optional
-  hook the caller owns.
+- Errors and logging follow [Errors](spec/SPEC.md#errors) in the specification.
 - Publish only from a tag. Raise `version` in `package.json` inside the pull request,
   where a reviewer sees it beside the change that justifies it. After the merge, push
   the matching `v<version>` tag. CI stages that version on npm with provenance, and it
@@ -37,7 +47,7 @@ is in [CONTRACT.md](CONTRACT.md).
   values it accepts, and changing a safeguard in a way a caller notices. Raising the
   minimum Node.js version is breaking too. Before `1.0.0`, a breaking change raises
   the minor number. From `1.0.0` on, it raises the major.
-- Link only to docs.lexq.io and public repositories.
+- Link only to lexq.io, docs.lexq.io, and public repositories.
 - Commit messages take the form `type: description`.
 
 Run commands and supported Node.js versions belong in the README and `package.json`.

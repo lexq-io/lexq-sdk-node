@@ -1,9 +1,3 @@
-/** How many failed calls in a row open the breaker. */
-export const DEFAULT_THRESHOLD = 5;
-
-/** How long the breaker stays open before one trial call goes through, in milliseconds. */
-export const DEFAULT_COOLDOWN_MS = 10_000;
-
 /** What a call holds while it runs: an ordinary pass, or the one trial after a cool-down. */
 export type Permit = "closed" | "trial";
 
@@ -11,8 +5,8 @@ export type Permit = "closed" | "trial";
  * Counts calls, not attempts. One client owns one breaker.
  *
  * A call whose deadline ran out, or whose last attempt timed out, failed to connect, or
- * got a 5xx, adds one. Any other call that got an answer resets the count. A call that
- * sent nothing never reaches the breaker.
+ * got a 5xx, adds one, unless that 5xx carries `P-003`. Any other call that got an answer
+ * resets the count. A call that sent nothing never reaches the breaker.
  */
 export class CircuitBreaker {
   readonly #threshold: number;

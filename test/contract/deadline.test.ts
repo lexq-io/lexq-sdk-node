@@ -3,7 +3,6 @@
 // wait, and each attempt has its own timeout, cut to the time left.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_TIMEOUT_MS } from "../../src/client.ts";
 import { LexqClient } from "../../src/index.ts";
 import {
   TEST_API_KEY,
@@ -14,6 +13,9 @@ import {
   reply,
   startFakeLexq,
 } from "../support/fake-lexq.ts";
+import { spec } from "../support/spec.ts";
+
+const { attemptTimeoutMs, deadlineMs } = spec.defaults;
 
 // Timers fire late on a busy CI runner, so upper bounds leave room.
 const SLACK_MS = 500;
@@ -25,9 +27,15 @@ test("without timeoutMs, a call to a server that never answers ends at the defau
   const error = lexqErrorOf(await clientFor(lexq).execute("group-1", { facts: {}, fallback: fallbackValue }));
   const elapsed = performance.now() - startedAt;
   assert.equal(error.reason, "deadline");
-  assert.ok(Number.isFinite(DEFAULT_TIMEOUT_MS));
-  assert.ok(elapsed >= DEFAULT_TIMEOUT_MS - 20, `ended after ${elapsed} ms`);
-  assert.ok(elapsed < DEFAULT_TIMEOUT_MS + SLACK_MS, `ended after ${elapsed} ms`);
+  assert.ok(Number.isFinite(deadlineMs));
+  assert.ok(elapsed >= deadlineMs - 20, `ended after ${elapsed} ms`);
+  assert.ok(elapsed < deadlineMs + SLACK_MS, `ended after ${elapsed} ms`);
+  // The first attempt ran into the default attempt timeout, which is shorter than the deadline.
+  const [first] = error.attempts;
+  assert.ok(first, "the first attempt is listed");
+  assert.equal(first.outcome, "timeout");
+  assert.ok(first.durationMs >= attemptTimeoutMs - 20, `the first attempt took ${first.durationMs} ms`);
+  assert.ok(first.durationMs < attemptTimeoutMs + SLACK_MS, `the first attempt took ${first.durationMs} ms`);
 });
 
 test("a call's timeoutMs replaces the client's", async (t) => {

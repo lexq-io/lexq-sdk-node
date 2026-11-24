@@ -57,10 +57,12 @@ export interface ClientOptions {
   /** `false` turns retries off for every call. A call can still set its own. Defaults to `true`. */
   readonly retry?: boolean | undefined;
   /**
-   * The circuit breaker, on by default. A call fails when it runs out of time, cannot
-   * connect, or gets a 5xx. After `threshold` failed calls in a row (5 by default), calls
-   * go straight to the fallback for `cooldownMs` (10000 by default), and then one trial
-   * call goes through. `false` turns the breaker off.
+   * The circuit breaker, on by default. A call counts toward the breaker when it runs out of
+   * time, cannot connect, or gets a 5xx that does not carry `P-003`, and any other answer
+   * resets the count. `P-003` means an action of a matched rule failed, not that LexQ is
+   * down. After `threshold` counted calls in a row (5 by default), calls go straight to the
+   * fallback for `cooldownMs` (10000 by default), and then one trial call goes through.
+   * `false` turns the breaker off.
    */
   readonly breaker?: false | { readonly threshold?: number | undefined; readonly cooldownMs?: number | undefined } | undefined;
 }

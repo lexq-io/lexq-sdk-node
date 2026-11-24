@@ -1,3 +1,5 @@
 {
-  "contextFileName": ["AGENTS.md", "CONTRACT.md", "CONTRIBUTING.md"]
+  "context": {
+    "fileName": ["AGENTS.md", "CONTRACT.md", "CONTRIBUTING.md", "spec/SPEC.md"]
+  }
 }

@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "note": "The values of the LexQ SDK specification, each stated in SPEC.md. enums, constants, and errorCodes are LexQ's, under the names LexQ gives them, and defaults are the values every SDK uses. enums list the values LexQ had at this version; LexQ can add values, and an SDK handles a value it does not know as SPEC.md says. An SDK carries this file as an unchanged copy: its tests and generated constants read the copy, which changes only when the SDK follows another version of the specification.",
+  "enums": {
+    "ActionType": {
+      "values": [
+        "SET_FACT",
+        "MUTATE_FACT",
+        "BLOCK"
+      ]
+    },
+    "ResultType": {
+      "values": [
+        "SUCCESS",
+        "ERROR"
+      ]
+    }
+  },
+  "constants": {
+    "MAX_REQUEST_BODY_BYTES": 1048576,
+    "MAX_REQUEST_NESTING_DEPTH": 32,
+    "MAX_REQUEST_PROPERTY_NAME_LENGTH": 256,
+    "MAX_LIST_ELEMENTS": 1000,
+    "MAX_STRING_LENGTH": 4096,
+    "MAX_NUMBER_INTEGER_DIGITS": 34,
+    "MAX_NUMBER_FRACTION_DIGITS": 34,
+    "IDEMPOTENCY_KEY_MAX_LENGTH": 255,
+    "IDEMPOTENCY_LOCK_SECONDS": 60,
+    "REPLAY_RETENTION_HOURS": 24
+  },
+  "errorCodes": [
+    {
+      "code": "B-008",
+      "httpStatus": 403
+    },
+    {
+      "code": "C-001",
+      "httpStatus": 400
+    },
+    {
+      "code": "C-010",
+      "httpStatus": 415
+    },
+    {
+      "code": "C-011",
+      "httpStatus": 413
+    },
+    {
+      "code": "C-012",
+      "httpStatus": 400
+    },
+    {
+      "code": "C-013",
+      "httpStatus": 400
+    },
+    {
+      "code": "I-001",
+      "httpStatus": 409
+    },
+    {
+      "code": "I-002",
+      "httpStatus": 409
+    },
+    {
+      "code": "I-003",
+      "httpStatus": 400
+    },
+    {
+      "code": "P-001",
+      "httpStatus": 404
+    },
+    {
+      "code": "P-003",
+      "httpStatus": 500
+    },
+    {
+      "code": "P-009",
+      "httpStatus": 403
+    },
+    {
+      "code": "P-015",
+      "httpStatus": 400
+    },
+    {
+      "code": "P-019",
+      "httpStatus": 400
+    },
+    {
+      "code": "P-060",
+      "httpStatus": 400
+    },
+    {
+      "code": "P-064",
+      "httpStatus": 400
+    },
+    {
+      "code": "P-068",
+      "httpStatus": 400
+    }
+  ],
+  "defaults": {
+    "baseUrl": "https://api.lexq.io",
+    "deadlineMs": 15000,
+    "attemptTimeoutMs": 10000,
+    "maxAttempts": 4,
+    "backoff": [
+      {
+        "minMs": 50,
+        "maxMs": 100
+      },
+      {
+        "minMs": 100,
+        "maxMs": 200
+      },
+      {
+        "minMs": 200,
+        "maxMs": 400
+      }
+    ],
+    "rateLimitWait": {
+      "minMs": 1000,
+      "maxMs": 1500
+    },
+    "keyInUseWait": {
+      "minMs": 1000,
+      "maxMs": 1500
+    },
+    "breakerThreshold": 5,
+    "breakerCooldownMs": 10000,
+    "maxResponseBytes": 16777216,
+    "maxMessageLength": 1000,
+    "maxKeyPathLength": 300,
+    "maxErrorCodeLength": 32
+  }
+}

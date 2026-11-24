@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  BACKOFF_MS,
-  IN_PROGRESS_MS,
-  RATE_LIMITED_MS,
-  backoff,
-  inProgressWait,
-  parseRetryAfter,
-  rateLimitWait,
-} from "../../src/retry.ts";
+import { backoff, keyInUseWait, parseRetryAfter, rateLimitWait } from "../../src/retry.ts";
+import { spec } from "../support/spec.ts";
 
-test("the backoff doubles with each failed attempt and keeps half of it random", () => {
-  for (const [failed, low, high] of [
-    [1, BACKOFF_MS / 2, BACKOFF_MS],
-    [2, BACKOFF_MS, BACKOFF_MS * 2],
-    [3, BACKOFF_MS * 2, BACKOFF_MS * 4],
-  ] as const) {
-    assert.equal(backoff(failed, () => 0), low);
-    assert.equal(backoff(failed, () => 1), high);
-  }
+const { backoff: backoffRanges, keyInUseWait: keyInUse, rateLimitWait: rateLimited } = spec.defaults;
+const longestBackoff = Math.max(...backoffRanges.map((range) => range.maxMs));
+
+test("each backoff is a random time in the range for that many failed attempts", () => {
+  backoffRanges.forEach((range, index) => {
+    assert.equal(backoff(index + 1, () => 0), range.minMs);
+    assert.equal(backoff(index + 1, () => 1), range.maxMs);
+  });
 });
 
 test("Retry-After is read as seconds or as an HTTP date", () => {
@@ -35,15 +27,15 @@ test("Retry-After is read as seconds or as an HTTP date", () => {
   assert.equal(parseRetryAfter(null, now), undefined);
 });
 
-test("a 429 waits as long as Retry-After asks, or else longer than any backoff", () => {
+test("a 429 waits as long as Retry-After asks, or else a random time longer than any backoff", () => {
   assert.equal(rateLimitWait("2", 0), 2000);
-  assert.equal(rateLimitWait(null, 0, () => 0), RATE_LIMITED_MS);
-  assert.equal(rateLimitWait("later", 0, () => 1), RATE_LIMITED_MS * 1.5);
-  assert.ok(RATE_LIMITED_MS > BACKOFF_MS * 4);
+  assert.equal(rateLimitWait(null, 0, () => 0), rateLimited.minMs);
+  assert.equal(rateLimitWait("later", 0, () => 1), rateLimited.maxMs);
+  assert.ok(rateLimited.minMs > longestBackoff);
 });
 
-test("an I-002 waits longer than any backoff", () => {
-  assert.equal(inProgressWait(() => 0), IN_PROGRESS_MS);
-  assert.equal(inProgressWait(() => 1), IN_PROGRESS_MS * 1.5);
-  assert.ok(IN_PROGRESS_MS > BACKOFF_MS * 4);
+test("an I-002 waits a random time longer than any backoff", () => {
+  assert.equal(keyInUseWait(() => 0), keyInUse.minMs);
+  assert.equal(keyInUseWait(() => 1), keyInUse.maxMs);
+  assert.ok(keyInUse.minMs > longestBackoff);
 });

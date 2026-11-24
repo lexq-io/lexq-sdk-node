@@ -1,40 +1,71 @@
 #!/usr/bin/env node
 /**
- * Writes contracts/lexq-manifest.sdk.json and src/contract.ts from LexQ's contract
- * manifest, keeping only the values this client relies on.
+ * Writes src/contract.ts and contracts/lexq-manifest.sdk.json from spec/values.json, the
+ * values of the LexQ SDK specification version that spec/spec.lock pins.
  *
- * Which values to keep is this client's call: CONSTANTS and ERROR_CODES below. What they
- * are is LexQ's: the manifest. A listed name the manifest does not have fails the run,
- * because the client would rely on a value LexQ no longer states.
+ * src/contract.ts holds the LexQ constants that CONSTANTS lists and every default in
+ * DEFAULTS. contracts/lexq-manifest.sdk.json holds the subset that CONSTANTS and
+ * ERROR_CODES list, until a later change removes it.
  *
- * The manifest is wider than what this repository publishes, so it is never committed.
- * Regenerating needs a copy of it, at the path given as the argument or at
- * contracts/lexq-manifest.json. Keep the copy outside the repository; .gitignore keeps out
- * any file named lexq-manifest.json in case one lands inside. The subset holds only values
- * that the client or its documentation already states, so committing it publishes nothing
- * new.
+ * A name below that spec/values.json lacks, or a default in spec/values.json that DEFAULTS
+ * does not list, fails the run. The client would otherwise rely on a value the
+ * specification no longer states, or leave out one it now states.
  *
- * Usage: node scripts/gen-contract.mjs [manifest]   regenerate both files
- *        node scripts/gen-contract.mjs --check      check that the two files agree
- * Exit:  0 on success, 1 when a listed value is missing or the two files disagree.
+ * Usage: node scripts/gen-contract.mjs           write both files
+ *        node scripts/gen-contract.mjs --check   check that both files match spec/values.json
+ * Exit:  0 on success, 1 when a value is missing, unknown, or malformed, or a file does
+ *        not match.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("../", import.meta.url);
+const VALUES = new URL("spec/values.json", ROOT);
 const SUBSET = new URL("contracts/lexq-manifest.sdk.json", ROOT);
 const SOURCE = new URL("src/contract.ts", ROOT);
 
-/** The constants this client relies on, by the field name LexQ gives them, and what each one is. */
+/**
+ * The LexQ constants both files carry, by the name LexQ gives them, and what each one is.
+ * `<C-012>` in a description becomes that code with the status spec/values.json gives it.
+ */
 const CONSTANTS = [
-  ["MAX_REQUEST_NESTING_DEPTH", "How many levels a request body may nest. LexQ answers a deeper body with `400 C-012`."],
-  ["IDEMPOTENCY_KEY_MAX_LENGTH", "The longest `Idempotency-Key` LexQ accepts, in characters. LexQ answers a longer key with `400 I-003`."],
+  ["MAX_REQUEST_NESTING_DEPTH", "How many levels a request body may nest. LexQ answers a deeper body with `<C-012>`."],
+  ["IDEMPOTENCY_KEY_MAX_LENGTH", "The longest `Idempotency-Key` LexQ accepts, in characters. LexQ answers a longer key with `<I-003>`."],
   ["REPLAY_RETENTION_HOURS", "How long a successful decision stays available to a repeat with the same `Idempotency-Key`, in hours. A later repeat runs the decision again and is billed again."],
 ];
 
-/** The error codes that the retry table in CONTRACT.md names. The subset carries the status LexQ gives each one. */
+/** The error codes contracts/lexq-manifest.sdk.json carries, with the status LexQ gives each one. */
 const ERROR_CODES = ["I-001", "I-002", "B-008"];
+
+/** A code in a CONSTANTS description, written `<C-012>`. */
+const CODE_IN_DOC = /<([A-Z]{1,4}-\d{3})>/g;
+
+/**
+ * Every default in the specification: its key in spec/values.json, the name src/contract.ts
+ * exports, its kind, and what it is.
+ */
+const DEFAULTS = [
+  ["baseUrl", "BASE_URL", "url", "Where LexQ is."],
+  ["deadlineMs", "DEADLINE_MS", "count", "The deadline for a call, in milliseconds, covering every attempt and every wait between them."],
+  ["attemptTimeoutMs", "ATTEMPT_TIMEOUT_MS", "count", "The timeout for one attempt while retries are on, in milliseconds."],
+  ["maxAttempts", "MAX_ATTEMPTS", "count", "Attempts for a call, counting the first."],
+  ["backoff", "BACKOFF", "ranges", "The wait before the next attempt, in milliseconds: entry n is the range after n + 1 failed attempts."],
+  ["rateLimitWait", "RATE_LIMIT_WAIT", "range", "The wait after a `429` without `Retry-After`, in milliseconds."],
+  ["keyInUseWait", "KEY_IN_USE_WAIT", "range", "The wait after `I-002`, in milliseconds."],
+  ["breakerThreshold", "BREAKER_THRESHOLD", "count", "How many counted calls in a row open the breaker."],
+  ["breakerCooldownMs", "BREAKER_COOLDOWN_MS", "count", "How long the breaker stays open before one trial call goes through, in milliseconds."],
+  ["maxResponseBytes", "MAX_RESPONSE_BYTES", "count", "The largest response body the client reads, in bytes."],
+  ["maxMessageLength", "MAX_MESSAGE_LENGTH", "count", "The longest part of LexQ's `message` an error message keeps, in UTF-16 code units."],
+  ["maxKeyPathLength", "MAX_KEY_PATH_LENGTH", "count", "The longest key path an error message keeps, in UTF-16 code units."],
+  ["maxErrorCodeLength", "MAX_ERROR_CODE_LENGTH", "count", "The longest `errorCode` an error keeps, in characters."],
+];
+
+/** What a problem says a default of each kind must be. */
+const KIND_NAMES = {
+  url: "a URL that starts with https://",
+  count: "a positive integer",
+  range: "an object with only minMs and maxMs, positive integers with minMs at most maxMs",
+  ranges: "a non-empty list of objects, each with only minMs and maxMs, positive integers with minMs at most maxMs",
+};
 
 function fail(message, details = []) {
   console.error(`✗ ${message}`);
@@ -44,71 +75,112 @@ function fail(message, details = []) {
   process.exit(1);
 }
 
-function read(url, label, hint) {
-  if (!existsSync(url)) {
-    fail(`${label} not found`, [hint]);
-  }
-  return readFileSync(url, "utf8");
+function isCount(value) {
+  return Number.isSafeInteger(value) && value > 0;
 }
 
-/** Picks the listed values. The full manifest names a constant Class.FIELD, and the subset FIELD alone. */
-function subsetOf(manifest, label) {
-  const constants = new Map();
-  for (const [key, entry] of Object.entries(manifest.constants ?? {})) {
-    const field = key.slice(key.lastIndexOf(".") + 1);
-    if (constants.has(field)) {
-      fail(`${label} has two constants named ${field}, and CONSTANTS cannot tell them apart`);
-    }
-    constants.set(field, typeof entry === "object" && entry !== null ? entry.value : entry);
+function isRange(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Object.keys(value).sort().join() === "maxMs,minMs" &&
+    isCount(value.minMs) &&
+    isCount(value.maxMs) &&
+    value.minMs <= value.maxMs
+  );
+}
+
+/** The values both files need, checked for presence and form. */
+function read() {
+  if (!existsSync(VALUES)) {
+    fail("spec/values.json not found", ["It belongs in spec/ with spec/SPEC.md and spec/spec.lock. CONTRIBUTING.md says how spec/ changes."]);
   }
-  const statuses = new Map((manifest.errorCodes ?? []).map((entry) => [entry.code, entry.httpStatus]));
-  const missing = [
-    ...CONSTANTS.filter(([name]) => !Number.isInteger(constants.get(name))).map(([name]) => `constant ${name}`),
-    ...ERROR_CODES.filter((code) => !Number.isInteger(statuses.get(code))).map((code) => `error code ${code}`),
+  const values = JSON.parse(readFileSync(VALUES, "utf8"));
+  const constants = values.constants ?? {};
+  const statuses = new Map((values.errorCodes ?? []).map((entry) => [entry.code, entry.httpStatus]));
+  const defaults = values.defaults ?? {};
+  const listed = new Set(DEFAULTS.map(([key]) => key));
+  const problems = [
+    ...CONSTANTS.filter(([name]) => !isCount(constants[name])).map(([name]) => `constant ${name} is missing or not a positive integer`),
+    ...ERROR_CODES.filter((code) => !Number.isInteger(statuses.get(code))).map((code) => `error code ${code} is missing or its status is not an integer`),
+    ...CONSTANTS.flatMap(([name, doc]) =>
+      [...doc.matchAll(CODE_IN_DOC)]
+        .filter(([, code]) => !Number.isInteger(statuses.get(code)))
+        .map(([, code]) => `error code ${code}, which the description of ${name} names, is missing or its status is not an integer`),
+    ),
+    ...Object.keys(defaults).filter((key) => !listed.has(key)).map((key) => `default ${key} is not in DEFAULTS`),
   ];
-  if (missing.length > 0) {
-    fail(`${label} lacks values this client relies on`, missing);
+  for (const [key, , kind] of DEFAULTS) {
+    const value = defaults[key];
+    const ok =
+      kind === "url"
+        ? typeof value === "string" && value.startsWith("https://")
+        : kind === "count"
+          ? isCount(value)
+          : kind === "range"
+            ? isRange(value)
+            : Array.isArray(value) && value.length > 0 && value.every(isRange);
+    if (!ok) {
+      problems.push(`default ${key} is missing or not ${KIND_NAMES[kind]}`);
+    }
   }
-  return {
+  if (Array.isArray(defaults.backoff) && isCount(defaults.maxAttempts) && defaults.backoff.length !== defaults.maxAttempts - 1) {
+    problems.push(`default backoff has ${defaults.backoff.length} ranges, and maxAttempts ${defaults.maxAttempts} needs ${defaults.maxAttempts - 1}`);
+  }
+  if (problems.length > 0) {
+    fail("spec/values.json does not hold the values this client uses", problems);
+  }
+  return { constants, statuses, defaults };
+}
+
+function renderSubset({ constants, statuses }) {
+  const subset = {
     schemaVersion: 2,
     note: "Subset of LexQ's contract manifest limited to CONSTANTS and ERROR_CODES in scripts/gen-contract.mjs. Generated; do not edit.",
-    constants: Object.fromEntries(CONSTANTS.map(([name]) => [name, constants.get(name)])),
+    constants: Object.fromEntries(CONSTANTS.map(([name]) => [name, constants[name]])),
     errorCodes: ERROR_CODES.map((code) => ({ code, httpStatus: statuses.get(code) })),
   };
-}
-
-function renderSubset(subset) {
   return `${JSON.stringify(subset, null, 2)}\n`;
 }
 
-function renderSource(subset) {
-  const lines = ["// Generated by scripts/gen-contract.mjs from contracts/lexq-manifest.sdk.json. Do not edit.", ""];
+function literal(kind, value) {
+  if (kind === "range") {
+    return `{ minMs: ${value.minMs}, maxMs: ${value.maxMs} }`;
+  }
+  if (kind === "ranges") {
+    return `[${value.map((range) => literal("range", range)).join(", ")}]`;
+  }
+  return JSON.stringify(value);
+}
+
+function renderSource({ constants, statuses, defaults }) {
+  const lines = ["// Generated by scripts/gen-contract.mjs from spec/values.json. Do not edit.", ""];
   for (const [name, doc] of CONSTANTS) {
-    lines.push(`/** ${doc} */`, `export const ${name} = ${subset.constants[name]};`, "");
+    const described = doc.replace(CODE_IN_DOC, (_, code) => `${statuses.get(code)} ${code}`);
+    lines.push(`/** ${described} */`, `export const ${name} = ${constants[name]};`, "");
+  }
+  for (const [key, name, kind, doc] of DEFAULTS) {
+    const suffix = kind === "range" || kind === "ranges" ? " as const" : "";
+    lines.push(`/** ${doc} */`, `export const ${name} = ${literal(kind, defaults[key])}${suffix};`, "");
   }
   return lines.join("\n");
 }
 
+const values = read();
 if (process.argv.includes("--check")) {
-  const text = read(SUBSET, "contracts/lexq-manifest.sdk.json", "It is committed. Run node scripts/gen-contract.mjs to write it.");
-  const subset = subsetOf(JSON.parse(text), "contracts/lexq-manifest.sdk.json");
   const problems = [];
-  if (text !== renderSubset(subset)) {
-    problems.push("contracts/lexq-manifest.sdk.json holds something other than CONSTANTS and ERROR_CODES, or was edited by hand");
+  if (!existsSync(SUBSET) || readFileSync(SUBSET, "utf8") !== renderSubset(values)) {
+    problems.push("contracts/lexq-manifest.sdk.json does not match spec/values.json");
   }
-  if (!existsSync(SOURCE) || readFileSync(SOURCE, "utf8") !== renderSource(subset)) {
-    problems.push("src/contract.ts does not match contracts/lexq-manifest.sdk.json");
+  if (!existsSync(SOURCE) || readFileSync(SOURCE, "utf8") !== renderSource(values)) {
+    problems.push("src/contract.ts does not match spec/values.json");
   }
   if (problems.length > 0) {
-    fail("the published subset and src/contract.ts disagree", [...problems, "Run node scripts/gen-contract.mjs with LexQ's manifest to write both."]);
+    fail("a file written from spec/values.json was changed by hand or not written again", [...problems, "Run node scripts/gen-contract.mjs to write both."]);
   }
-  console.log(`✓ src/contract.ts matches contracts/lexq-manifest.sdk.json: ${CONSTANTS.length} constants, ${ERROR_CODES.length} error codes`);
+  console.log(`✓ src/contract.ts and contracts/lexq-manifest.sdk.json match spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults, ${ERROR_CODES.length} error codes`);
 } else {
-  const argument = process.argv[2];
-  const manifest = argument === undefined ? new URL("contracts/lexq-manifest.json", ROOT) : pathToFileURL(resolve(argument));
-  const text = read(manifest, "LexQ's contract manifest", "Pass its path, or place a copy at contracts/lexq-manifest.json, which .gitignore keeps out.");
-  const subset = subsetOf(JSON.parse(text), "LexQ's contract manifest");
-  writeFileSync(SUBSET, renderSubset(subset));
-  writeFileSync(SOURCE, renderSource(subset));
-  console.log(`✓ wrote contracts/lexq-manifest.sdk.json and src/contract.ts: ${CONSTANTS.length} constants, ${ERROR_CODES.length} error codes`);
+  writeFileSync(SUBSET, renderSubset(values));
+  writeFileSync(SOURCE, renderSource(values));
+  console.log(`✓ wrote src/contract.ts and contracts/lexq-manifest.sdk.json from spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults, ${ERROR_CODES.length} error codes`);
 }
