@@ -13,8 +13,10 @@ returns the decision. This package makes that call, with four safeguards:
 - A circuit breaker stops calling LexQ for a while when calls keep failing.
 - Every call requires a fallback: the decision your service uses when the call fails.
 
-[CONTRACT.md](CONTRACT.md) spells out each safeguard and how the package reads LexQ's
-responses.
+The LexQ SDK specification spells out each safeguard and how an SDK reads LexQ's
+responses. [spec/SPEC.md](spec/SPEC.md) is a copy of the version this package follows.
+[CONTRACT.md](CONTRACT.md) says which version that is, where the package does not yet do
+what that version says, and how the specification maps onto Node.js.
 
 ## Usage
 
@@ -88,14 +90,19 @@ reads it, LexQ answers `P-015` and the call uses the fallback.
 lists the keys a request must send, and what happens when a `MUTATE_FACT` target is
 `null`.
 
-By default a call has a 15-second deadline and 10 seconds per attempt, and the circuit
-breaker opens for 10 seconds after 5 failed calls in a row. Set `timeoutMs` lower for a
-request that cannot wait that long. LexQ still finishes and bills a decision that the
-deadline cut off. If it succeeded, repeating the call within 24 hours with the
+By default a call has a 15-second deadline and 10 seconds per attempt. Set `timeoutMs`
+lower for a request that cannot wait that long. LexQ still finishes and bills a decision
+that the deadline cut off. If it succeeded, repeating the call within 24 hours with the
 `idempotencyKey` from the error returns it instead of running it again.
 [Retrying a Failed Call](https://docs.lexq.io/api/execution#retrying-a-failed-call) says
-what a repeat gets otherwise. The options are documented on `ClientOptions` and
-`ExecuteOptions` in the type definitions.
+what a repeat gets otherwise.
+
+The circuit breaker opens for 10 seconds after 5 calls in a row end with a timeout, a
+failed connection, or a 5xx that does not carry `P-003`. `P-003` means an action of one of
+your rules failed, not that LexQ is down.
+
+The options are documented on `ClientOptions` and `ExecuteOptions` in the type
+definitions.
 
 ## Development
 
@@ -110,13 +117,14 @@ npm run build
 
 `npm run build` compiles `src` into `dist/`, which is what npm publishes.
 
-`contracts/lexq-manifest.sdk.json` holds the LexQ limits and error codes the client relies
-on, taken from LexQ's contract manifest, and `src/contract.ts` is generated from it. To
-regenerate both from a copy of the manifest kept outside this repository:
+`src/contract.ts` holds every default and three LexQ constants, written from
+`spec/values.json`. To write it again:
 
 ```sh
-node scripts/gen-contract.mjs ../lexq-manifest.json
+node scripts/gen-contract.mjs
 ```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) says how `spec/` changes.
 
 ## Maintenance
 

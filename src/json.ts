@@ -1,4 +1,4 @@
-import { MAX_REQUEST_NESTING_DEPTH } from "./contract.ts";
+import { MAX_KEY_PATH_LENGTH, MAX_REQUEST_NESTING_DEPTH } from "./contract.ts";
 import { Decimal } from "./decimal.ts";
 import { cut, escaped } from "./text.ts";
 
@@ -17,12 +17,6 @@ export const MAX_DEPTH = MAX_REQUEST_NESTING_DEPTH;
 
 /** The level of a value in `facts` or `contexts`: inside the body and that object. */
 const ENTRY_LEVEL = 3;
-
-/**
- * The longest path a TypeError shows. A path to a value at the depth limit fits when its
- * keys are short, and one long key cannot make the message long.
- */
-const MAX_PATH_LENGTH = 300;
 
 // A class name a TypeError shows, such as Map. A class can be given any name, and one that
 // is not a plain name is left out.
@@ -143,9 +137,13 @@ function encodeContainer(value: object, path: string, depth: number, ancestors: 
   return `{${entries.join(",")}}`;
 }
 
-/** A TypeError about the value at path, with the path on one line and cut to MAX_PATH_LENGTH. */
+/**
+ * A TypeError about the value at path, with the path on one line and cut to
+ * MAX_KEY_PATH_LENGTH. A path to a value at the depth limit fits when its keys are short, and
+ * one long key cannot make the message long.
+ */
 function unsendable(path: string, problem: string): TypeError {
   // Escaping can make the path several times longer, so only the part that can be shown is
   // escaped. The message is the same as escaping the whole path and then cutting it.
-  return new TypeError(`${cut(escaped(path.slice(0, MAX_PATH_LENGTH + 1)), MAX_PATH_LENGTH)} ${problem}`);
+  return new TypeError(`${cut(escaped(path.slice(0, MAX_KEY_PATH_LENGTH + 1)), MAX_KEY_PATH_LENGTH)} ${problem}`);
 }

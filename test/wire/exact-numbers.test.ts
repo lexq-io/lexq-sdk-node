@@ -1,4 +1,4 @@
-// CONTRACT.md, Wire Contract: keep every number exact in both directions.
+// spec/SPEC.md, Wire: numbers. Every number stays exact in both directions.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Decimal } from "../../src/index.ts";

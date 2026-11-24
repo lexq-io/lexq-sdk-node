@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Decimal } from "../../src/index.ts";
-import { MAX_DEPTH, decodeBody, encodeBody } from "../../src/json.ts";
+import { decodeBody, encodeBody } from "../../src/json.ts";
+import { constant, spec } from "../support/spec.ts";
+
+const MAX_DEPTH = constant("MAX_REQUEST_NESTING_DEPTH");
 
 test("strings and keys are escaped the way JSON.stringify escapes them", () => {
   // A line separator, an emoji, and a lone surrogate, which JSON.stringify writes as \ud800.
@@ -96,12 +99,14 @@ test("a TypeError escapes a format character or an unpaired surrogate in a key",
 });
 
 test("a TypeError cut short does not split a character in two", () => {
-  // With "facts." in front, the emoji's first code unit is the 300th character of the path.
+  // With "facts." in front, the emoji's first code unit falls on the last position the cut
+  // keeps, so the cut drops the whole emoji.
+  const filler = spec.defaults.maxKeyPathLength - "facts.".length - 1;
   const emoji = String.fromCodePoint(0x1f600);
-  const key = `${"x".repeat(293)}${emoji}${"x".repeat(10)}`;
+  const key = `${"x".repeat(filler)}${emoji}${"x".repeat(10)}`;
   assert.throws(() => encodeBody({ [key]: Number.NaN }, undefined), {
     name: "TypeError",
-    message: `facts.${"x".repeat(293)}... is NaN, which JSON cannot carry`,
+    message: `facts.${"x".repeat(filler)}... is NaN, which JSON cannot carry`,
   });
 });
 

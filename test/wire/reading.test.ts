@@ -1,8 +1,14 @@
-// CONTRACT.md, Wire Contract: reading a response.
+// spec/SPEC.md, Wire: reading a response.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { MAX_BODY_BYTES, MAX_MESSAGE_LENGTH } from "../../src/attempt.ts";
 import { CALL_FIELDS, clientFor, fallbackValue, lexqErrorOf, reply, startFakeLexq, type Responder } from "../support/fake-lexq.ts";
+import { spec } from "../support/spec.ts";
+
+const {
+  maxErrorCodeLength: MAX_ERROR_CODE_LENGTH,
+  maxMessageLength: MAX_MESSAGE_LENGTH,
+  maxResponseBytes: MAX_RESPONSE_BYTES,
+} = spec.defaults;
 
 async function failureFrom(responder: Responder) {
   const lexq = await startFakeLexq(responder);
@@ -49,7 +55,7 @@ test("LexQ's message stays on one line and within MAX_MESSAGE_LENGTH", async () 
 });
 
 test("an errorCode that is not a short token is not kept", async () => {
-  for (const code of ["P-015\nINFO", "x".repeat(33), ""]) {
+  for (const code of ["P-015\nINFO", "x".repeat(MAX_ERROR_CODE_LENGTH + 1), ""]) {
     const { error } = await failureFrom(reply.json(400, JSON.stringify({ result: "ERROR", errorCode: code, message: "m" })));
     assert.equal(error.errorCode, undefined, JSON.stringify(code));
     assert.equal(error.message, "LexQ answered 400");
@@ -62,19 +68,22 @@ test("the code is read from errorCode, not code", async () => {
   assert.equal(error.errorCode, undefined);
 });
 
-const defects: [string, Responder][] = [
-  ["a 2xx with result ERROR", reply.json(200, '{"result":"ERROR","errorCode":"P-001","message":"x","data":{"traceId":"t"}}')],
-  ["a 2xx without a result", reply.json(200, '{"data":{"traceId":"t","inputFacts":{}}}')],
-  ["a 4xx with result SUCCESS", reply.json(400, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}')],
-  ["a 5xx with result SUCCESS", reply.json(500, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}')],
-  ["result SUCCESS without data", reply.json(200, '{"result":"SUCCESS"}')],
-  ["JSON that is not an object", reply.json(200, '["SUCCESS"]')],
+// Each one keeps the status it came with, and the errorCode when it carried one.
+const defects: [string, Responder, number, string | undefined][] = [
+  ["a 2xx with result ERROR", reply.json(200, '{"result":"ERROR","errorCode":"P-001","message":"x","data":{"traceId":"t"}}'), 200, "P-001"],
+  ["a 2xx without a result", reply.json(200, '{"errorCode":"P-001","data":{"traceId":"t","inputFacts":{}}}'), 200, "P-001"],
+  ["a 4xx with result SUCCESS", reply.json(400, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}'), 400, undefined],
+  ["a 5xx with result SUCCESS", reply.json(500, '{"result":"SUCCESS","data":{"traceId":"t","inputFacts":{}}}'), 500, undefined],
+  ["result SUCCESS without data", reply.json(200, '{"result":"SUCCESS"}'), 200, undefined],
+  ["JSON that is not an object", reply.json(200, '["SUCCESS"]'), 200, undefined],
 ];
 
-for (const [defect, responder] of defects) {
+for (const [defect, responder, status, errorCode] of defects) {
   test(`${defect} is a failure, even when it carries data`, async () => {
     const { error } = await failureFrom(responder);
     assert.equal(error.reason, "response");
+    assert.equal(error.status, status);
+    assert.equal(error.errorCode, errorCode);
   });
 }
 
@@ -106,21 +115,21 @@ test("a body larger than the limit is a failure that keeps its status", async ()
   const { error } = await failureFrom((response) => {
     // Written in two chunks, so the body arrives without a content-length to check first.
     response.writeHead(200, { "content-type": "application/json" });
-    response.write(Buffer.alloc(MAX_BODY_BYTES / 2, 0x20));
-    response.write(Buffer.alloc(MAX_BODY_BYTES / 2 + 1, 0x20));
+    response.write(Buffer.alloc(MAX_RESPONSE_BYTES / 2, 0x20));
+    response.write(Buffer.alloc(MAX_RESPONSE_BYTES / 2 + 1, 0x20));
     response.end();
   });
   assert.equal(error.reason, "response");
   assert.equal(error.status, 200);
-  assert.equal(error.message, `LexQ answered 200 with a body larger than ${MAX_BODY_BYTES} bytes`);
+  assert.equal(error.message, `LexQ answered 200 with a body larger than ${MAX_RESPONSE_BYTES} bytes`);
 });
 
 test("a body declared larger than the limit is not read", async () => {
   const { error } = await failureFrom((response) => {
-    response.writeHead(200, { "content-type": "application/json", "content-length": String(MAX_BODY_BYTES + 1) });
+    response.writeHead(200, { "content-type": "application/json", "content-length": String(MAX_RESPONSE_BYTES + 1) });
     response.write("{");
   });
   assert.equal(error.reason, "response");
   assert.equal(error.status, 200);
-  assert.equal(error.message, `LexQ answered 200 with a body larger than ${MAX_BODY_BYTES} bytes`);
+  assert.equal(error.message, `LexQ answered 200 with a body larger than ${MAX_RESPONSE_BYTES} bytes`);
 });

@@ -1,192 +1,79 @@
 # Client contract
 
-This repository builds `@lexq/sdk`, the Node.js client for the [LexQ](https://lexq.io)
-execution API. A backend service sends facts, such as an order's amount and the
-customer's tier, and LexQ evaluates the deployed rules and returns the decision. This
-package makes that call. It does not evaluate rules itself.
+`@lexq/sdk` follows v0.1.0 of the LexQ SDK specification. The specification's version
+numbers are separate from this package's. [spec/SPEC.md](spec/SPEC.md) is an unchanged copy
+of that version and says what the client must do when it calls LexQ. This file lists
+where the client does not yet do what that version says, and it maps the specification
+onto Node.js.
 
-The package starts with one endpoint, `POST /api/v1/execution/groups/{groupId}`.
-Batch and composite execution are not in it yet. Managing rules belongs to the
-[LexQ CLI](https://github.com/lexq-io/lexq-cli) and its MCP server. The endpoint is
-described in the [Execution API reference](https://docs.lexq.io/api/execution), and
-its failures in [error codes](https://docs.lexq.io/api/errors).
+## Not followed yet
 
-## Resilience Contract
+Until an item is closed, the client does what the item says instead.
 
-A call to LexQ crosses the network, so it can be slow or fail. What the caller should
-do then depends on the decision: a checkout can go ahead without a discount, but a
-transfer should wait. This package exists for the four safeguards below, and every
-release keeps all four.
+- **Cancellation** ([Cancellation](spec/SPEC.md#cancellation)): a call cannot be canceled.
+  `execute` takes no `AbortSignal`.
+- **Where the client starts**
+  ([Sending a request](spec/SPEC.md#sending-a-request)): the client refuses to start only
+  where `window` and `document` both exist. It starts in a web page's workers and in a
+  mobile app. The documentation does not yet say to keep it out of desktop apps.
+- **`Retry-After`** ([Defaults](spec/SPEC.md#defaults)): the client reads a whole number of
+  seconds and the IMF-fixdate form, such as `Tue, 10 Nov 2026 00:00:05 GMT`. The RFC 850
+  and asctime forms count as no `Retry-After`.
+- **Errors** ([Errors](spec/SPEC.md#errors)):
+  - The message leaves out LexQ's `message` when the answer carries no `errorCode` or one
+    of the wrong form, when a `2xx` does not carry `result: "SUCCESS"`, when an answer
+    with `result: "SUCCESS"` is not a decision, and when the answer is a redirect. The
+    error of a redirect, and of a `2xx` with `result: "SUCCESS"` whose `data` is an object
+    but not a decision, also leaves out any `errorCode` the body carries.
+  - When a getter, a `toJSON` method, or a proxy in the facts or contexts throws a
+    `TypeError`, its message becomes the error's message unchanged, not made one line or
+    cut to length.
+  - The code Node.js gives a connection error, such as `ECONNREFUSED`, goes into the
+    message without being made one line or cut to length.
+- **Keys that are not strings** ([Errors](spec/SPEC.md#errors)): a symbol key in `facts`
+  or `contexts` is left out of the request instead of failing the call as `invalid_input`.
+- **Nesting through `toJSON`** ([LexQ limits](spec/SPEC.md#lexq-limits)): an object with a
+  `toJSON` method counts as a level even when `toJSON` returns a string, as a `Date`'s
+  does, and a list or object that `toJSON` returns is counted one level deeper than it is.
+  So a body within the limit can be refused when it uses `toJSON` near the limit.
+- **Enum values in the types**
+  ([Returning a decision](spec/SPEC.md#returning-a-decision)): the client passes `null`
+  and any value through, but the type definitions declare `RuleAction.type`,
+  `DecisionTrace.status`, and `DecisionTrace.reasonCode` as `string`, without `null`.
+- **Documentation:**
+  - Where it describes retries, it does not yet say what Fail-open does to them
+    ([Retry with the same `Idempotency-Key` and the same bytes](spec/SPEC.md#2-retry-with-the-same-idempotency-key-and-the-same-bytes)).
+  - It does not yet say to make `trafficKey` a surrogate key or a keyed hash, never an
+    email address or a phone number, or to hash a non-ASCII ID before using it as an
+    idempotency key ([Sending a request](spec/SPEC.md#sending-a-request)).
+  - It says a NUMBER fact rejects a string with `P-060`, though LexQ can answer that way
+    only when an enabled rule reads the fact ([Numbers](spec/SPEC.md#numbers)).
+  - It says LexQ answers any key ending in `__delta` with `P-068`, though only a
+    top-level key in `facts` gets that answer
+    ([Returning a decision](spec/SPEC.md#returning-a-decision)).
+- **Tests** ([Tests](spec/SPEC.md#tests)): no test yet covers an attempt that times out
+  while the body is arriving, a call that fails before sending and so leaves the breaker's
+  trial to the next call, sending a `Decimal` with an exponent, a group ID with a space,
+  removing the spaces at either end of LexQ's `message`, or `null` in an enum field. No
+  test yet checks that the client uses the default breaker cool-down, reads a response
+  body exactly as large as the default limit, keeps an `errorCode` exactly as long as its
+  default limit, keeps LexQ's `message` and a key path whole when each is exactly as long
+  as its default limit, or cuts LexQ's `message` when it is one code unit longer than its
+  limit.
 
-### 1. Give every call a deadline
+## Language mapping
 
-The default is finite. The client sets it, a call can override it, and neither can
-turn it off. The deadline covers every attempt and every wait between attempts. Each
-attempt also has its own timeout, cut to the time left before the deadline, so an
-attempt that hangs leaves time for another.
-
-### 2. Retry with the same `Idempotency-Key` and the same bytes
-
-When an attempt fails, send it again with the same key. If the caller passes no key,
-generate one per call and use it for every attempt of that call. Serialize the body
-once and resend those bytes: the same key with a different body fails with `I-001`,
-and a body serialized a second time can differ. Retries are on by default. The client
-or a single call can turn them off.
-
-| What came back | Retry |
+| What the specification leaves to each SDK | The Node.js client |
 |---|---|
-| Nothing: the attempt timed out or the connection failed | Yes, with backoff, while the deadline allows |
-| `502`, `503`, or `504` | Yes, with backoff, while the deadline allows |
-| `429` | Yes, after `Retry-After` if the response has one, or else after a longer wait, while the deadline allows. A request rejected with `429` did not use its key |
-| `409` with `I-002` | Yes, with backoff, while the deadline allows. A request with this key is still running or failed less than a minute ago |
-| `409` with `I-001` | Never. The key is spent, and only a new key works |
-| `403` with `B-008` | Never. The monthly execution quota is used up, and every new execution fails the same way until it resets or the plan is upgraded |
-| Anything else | No |
-
-If this package adds batch execution, it must never retry a batch automatically.
-Batch calls take no `Idempotency-Key`, so a retried batch runs and bills every item
-again.
-
-### 3. Keep a circuit breaker on by default
-
-The breaker counts calls, not attempts. A call adds one when it ends with the fallback
-because the deadline ran out, or because its last attempt timed out, failed to
-connect, or got a 5xx. Any other call that got a response resets the count to zero. A
-call that sent nothing, because the breaker was open or the call failed before
-sending, leaves the count alone.
-
-When the count reaches the threshold, the breaker opens: calls skip the network and go
-straight to the fallback. After a cool-down, one trial call goes through with its
-retries, while other calls keep getting the fallback. If the trial adds to the count,
-the breaker opens again; otherwise it closes. The breaker belongs to the client
-instance, so a service creates one client and reuses it. The client can turn the
-breaker off.
-
-### 4. Require a fallback on every call, and use it on every failure
-
-The package never picks a decision for the caller, because only the caller knows which
-side is safe. LexQ errors that are not retried use the fallback too. A rule change that
-needs a new fact, or a policy group someone disabled to stop bad decisions, must not
-take the caller's service down. The fallback is a function that receives the error and
-returns the caller's own value. If it throws, the call rejects with that error. The
-deadline covers the attempts to reach LexQ, not the fallback. The result is either
-LexQ's decision or the fallback's value with the error, and it says which.
-
-### Errors
-
-Two kinds of mistake skip the fallback, because they are bugs in the calling code. One
-is leaving out the fallback. The other is an option of the wrong type or range, such as
-a deadline of `0` or `Infinity`. Both are rejected with a `TypeError` before anything
-is sent. The constructor throws, and a call's promise rejects. In TypeScript, a call
-without a fallback also fails to compile.
-
-Everything else uses the fallback, including two failures that happen before anything
-is sent. One is a fact the client will not write: a value that JSON cannot carry as
-written, such as `NaN`, `Infinity`, or a list with a missing element, or a value nested
-deeper than the client's limit. The other is an idempotency key that is empty or that a
-header cannot carry.
-
-The fallback always receives a `LexqError`, and its reason says why: an open breaker, a
-request the client would not send, the deadline, an attempt that timed out, a failed
-connection, or a LexQ error with its status and `errorCode`. It also lists every attempt
-and carries the idempotency key the call used. For a request the client would not send,
-the reason is `invalid_input`, and the `TypeError` that says what to change is the
-error's cause. When the key itself was the problem, the error leaves the key out. When
-LexQ finished the call's decision and it succeeded, repeating the call with that key
-within 24 hours returns the decision instead of running a second one.
-
-### Contract tests
-
-Each safeguard must have a contract test that CI runs on every pull request. The tests
-are the specification: a change to a safeguard changes its test in the same pull
-request, and the description says why. The fallback test has a `@ts-expect-error` call
-without a fallback, so it fails if such a call ever compiles. Thresholds, waits, and
-default values belong in the code next to their tests, not in this file.
-
-## Wire Contract
-
-### Reading a response
-
-- Read the body for every status. LexQ reports failures in the body, for 5xx as well
-  as 4xx. `fetch` does not throw on an error status, and a replacement HTTP client
-  must not either.
-- Never follow a redirect. `fetch` follows redirects by default and would send the
-  request's headers, `x-api-key` included, to the new address. A `3xx` is a failure
-  that keeps its status.
-- A body that is not JSON is a failure that keeps its status. A load balancer's 502
-  page or the 404 from a wrong host is HTML.
-- Read at most a fixed number of bytes. A larger body is a failure that keeps its
-  status, even when it carries a decision, so one response cannot fill the caller's
-  memory.
-- A LexQ response has two branches. `result: "SUCCESS"` carries `data`, and
-  `result: "ERROR"` carries `errorCode` and `message`. The key is `errorCode`, not
-  `code`, and reading the wrong key fails silently: every error arrives without a
-  code.
-- A 2xx whose `result` is not `SUCCESS`, or a 4xx or 5xx whose `result` is `SUCCESS`,
-  is a server defect. Treat it as a failure even if it carries `data`.
-- Branch on `errorCode` as well as the status. `I-001` and `I-002` are both `409` and
-  need opposite handling. Codes are stable, and messages may be reworded.
-
-### Returning a decision
-
-- Return every field LexQ sends in `data`, and add only `source`, which tells LexQ's
-  decision from the fallback's value. Besides the facts and `traceId`, that is
-  `executedAt`, `totalProcessingTimeMs`, `inputContexts`, `executionTraces`, and
-  `decisionTraces`. A field LexQ adds later reaches the caller too, before the package's
-  types name it. When they do, they make it optional, and the client accepts it when it
-  is empty: a retry that LexQ serves from the idempotency key can return a decision made
-  before the field existed, with the field `null`, `0`, or `false`. A test reads the
-  single-group response the Execution API reference shows and fails when one of its
-  fields is missing from the result.
-- A layer, the contexts, or a trace list that LexQ leaves out or sends as `null` is
-  empty in the result.
-- Return the facts in the three layers LexQ sends, and never merge them. `inputFacts`
-  holds the facts as LexQ received them. `mutatedFacts` holds the new value of each fact
-  the request sent that a rule changed. `generatedVariables` holds the keys the request
-  did not send, such as a `SET_FACT` target, and keys that only describe the decision,
-  such as `paymentAmount__delta`, how much `MUTATE_FACT` actions changed `paymentAmount`.
-  The documentation must say where a new value is, and that a caller who sends a
-  decision's facts again leaves the `__delta` keys out: LexQ answers a key in `facts`
-  that ends in `__delta` with `400` (`P-068`).
-- Make a block hard to miss. A `BLOCK` action does not fail the call. It writes
-  `isBlocked: true` and `blockReason`, which arrive in `generatedVariables` when the
-  request did not send them. A request that sends `isBlocked` itself finds that key
-  elsewhere: in `mutatedFacts` when it sent another value, and only in `inputFacts` when
-  it sent `true`, because the value did not change. The documentation must show a check
-  that reads all three layers, and say to send an earlier block under another key, such
-  as `previouslyBlocked`, because a request that sends `isBlocked: true` looks blocked
-  whether or not a `BLOCK` ran.
-- Return `data.traceId`. It is the execution's audit handle, and the caller stores it
-  with the record the decision applies to. A retry that LexQ served from the
-  idempotency key returns the original `traceId` and `executedAt`.
-- Keep every number exact in both directions. LexQ calculates in decimal, and an
-  amount can carry 34 significant digits or more. A JavaScript number holds 15
-  reliably, and the package cannot tell an amount from a count. Parse responses so
-  that no number loses digits, and give callers a way to send an exact amount as a
-  JSON number. A string such as `"150000"` is not one: a fact whose type is NUMBER
-  rejects it with `P-060`. Every number in the facts, the contexts, and the traces
-  reaches the caller as a `Decimal`, which keeps the text LexQ wrote and has no implicit
-  number value, so arithmetic on it throws instead of rounding. `totalProcessingTimeMs`
-  is a number, because it counts milliseconds. A caller sends an exact amount as a
-  `Decimal` or a bigint, and a `Decimal` from one decision goes back out unchanged. A
-  contract test sends and reads back an amount with more than 34 significant digits.
-
-### Sending a request
-
-- Keep the API key on the server. Send it in the `x-api-key` header, never in
-  `Authorization`. The constructor throws where `window` and `document` exist, because
-  the key would ship to every visitor. It accepts an `http` base URL only for
-  `localhost`, `127.0.0.1`, and `[::1]`.
-- Send `null` as JSON `null` and keep its key, at every level of `facts` and
-  `contexts`. LexQ treats a key sent as `null` differently from a key left out. A
-  condition on a `null` value does not match, even in a rule that blocks. If an
-  enabled rule reads a key that the request leaves out of `facts`, the request fails
-  with `P-015`, which names the key, before any rule runs. Leave out a key whose value
-  is `undefined`, as `JSON.stringify` does. Inside a list, a missing element fails the
-  call instead, as described under Errors.
-- Never shorten a caller's idempotency key. LexQ accepts up to 255 characters and
-  answers a longer key with `I-003` rather than cutting it. Keys are stored with the
-  execution, so tell callers to hash long IDs and keep personal data out of them.
-- Send `trafficKey` in `contexts`. A/B routing reads `contexts.trafficKey`. In `facts`
-  it is ignored, and the test version receives no traffic. The package does not move
-  it, so the documentation for `contexts` must say where it goes.
+| The shape of a call | `execute` returns a promise. It resolves with LexQ's decision, or with the fallback's value and the error. It rejects when the fallback throws, when the call is a programming error, or when a getter, a `toJSON` method, or a proxy in the facts or contexts throws something other than a `TypeError` |
+| The error type, and how a programming error is reported | The fallback receives a `LexqError`. A programming error is a `TypeError`: the constructor throws it, and `execute` rejects with it before sending anything. Where the client refuses to start, the constructor throws an `Error` |
+| How it writes the reasons and the two values of `source` | As strings. `error.reason` is `"breaker_open"`, `"invalid_input"`, `"deadline"`, `"timeout"`, `"connection"`, or `"response"`, and `result.source` is `"lexq"` or `"fallback"`. The types declare each as a union of string literals |
+| The exact decimal type, and how to compare two numbers by value | `Decimal`, which keeps in `text` the number exactly as LexQ wrote it. It has no comparison of its own. To compare two numbers by value, pass each one's `toString()` to a decimal library: the text keeps the scale, so `20` and `20.0` are different text |
+| The text it writes for a number that carries no text of its own | A JavaScript number goes out as `String(value)` writes it, so `0.0000001` goes out as `1e-7`, `1e21` as `1e+21`, and `-0` as `0`. A bigint goes out as its digits, and a `Decimal` as its `text` |
+| The cancellation mechanism | None yet. See [Not followed yet](#not-followed-yet) |
+| Where it refuses to start | The constructor throws where `window` and `document` both exist, as in a web page |
+| How a field LexQ adds later reaches the caller | As a property of the decision, which holds every field in LexQ's `data` with `source` added. The types declare only the fields this release knows |
+| Which collections it refuses because it cannot rely on their order | Every object in the facts or contexts that is neither a plain object nor an array, such as a `Set` or a `Map`, fails the call as `invalid_input`, unless it has a `toJSON` method, whose result goes out instead |
+| Which key names could change how its own objects behave or which types its parser creates, and how it keeps them ordinary keys | `__proto__` and `toJSON`. The parser and the decision define every key LexQ sends as an own property, so `__proto__` never sets a prototype. The request is written from each object's own enumerable string keys. A `toJSON` method on an object in the facts or contexts is called, as `JSON.stringify` does, and a `toJSON` key whose value is not a function goes out as an ordinary key |
+| How one client is shared across concurrent calls | One client serves any number of concurrent calls. Its breaker counts that client's calls only and updates its count synchronously, so concurrent calls share one count. Create one client for a service and reuse it |
+| Any rule that only its language has | A key whose value is `undefined` is left out, as `JSON.stringify` does, and `undefined` or a missing element in a list fails the call as `invalid_input`. A bigint goes out as an integer, and a `JSON.rawJSON` value as its text. `timeoutMs`, `attemptTimeoutMs`, and `breaker.cooldownMs` take at most 2,147,483,647 ms, the longest delay a Node.js timer runs. A group ID that holds an unpaired surrogate is a programming error, because a URL cannot carry it |

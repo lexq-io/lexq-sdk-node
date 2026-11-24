@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "node:test";
 import { LexqClient, LexqError, type ExecuteResult } from "../../src/index.ts";
-import { MAX_DEPTH } from "../../src/json.ts";
 import {
   TEST_API_KEY,
   closedPort,
@@ -16,6 +15,7 @@ import {
   reply,
   startFakeLexq,
 } from "../support/fake-lexq.ts";
+import { constant } from "../support/spec.ts";
 
 test("a call without a fallback does not compile, and rejects before sending", async (t) => {
   const lexq = await startFakeLexq(reply.decision());
@@ -104,6 +104,8 @@ test("the result says whether it is LexQ's decision or the fallback's value", as
   assert.equal(fallbackOf(fellBack).source, "fallback");
 });
 
+const MAX_DEPTH = constant("MAX_REQUEST_NESTING_DEPTH");
+
 const unsendable: [string, Record<string, unknown>][] = [
   ["NaN", { facts: { paymentAmount: Number.NaN } }],
   ["Infinity", { facts: { paymentAmount: Number.POSITIVE_INFINITY } }],
@@ -175,6 +177,7 @@ const misuse: [string, string, Record<string, unknown>][] = [
   ["groupId is empty", "", {}],
   ['groupId is "."', ".", {}],
   ['groupId is ".."', "..", {}],
+  ["groupId holds an unpaired surrogate", "\uD800", {}],
   ["facts is missing", "group-1", { facts: undefined }],
   ["facts is a list", "group-1", { facts: [] }],
   ["facts is a string", "group-1", { facts: "paymentAmount=1" }],

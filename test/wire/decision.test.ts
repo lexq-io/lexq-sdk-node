@@ -1,4 +1,4 @@
-// CONTRACT.md, Wire Contract: returning a decision.
+// spec/SPEC.md, Wire: returning a decision.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Decimal } from "../../src/index.ts";

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { isRecord, sendAttempt, type AttemptOutcome, type PreparedRequest } from "./attempt.ts";
-import { CircuitBreaker, DEFAULT_COOLDOWN_MS, DEFAULT_THRESHOLD } from "./breaker.ts";
+import { CircuitBreaker } from "./breaker.ts";
+import { ATTEMPT_TIMEOUT_MS, BASE_URL, BREAKER_COOLDOWN_MS, BREAKER_THRESHOLD, DEADLINE_MS, MAX_ATTEMPTS } from "./contract.ts";
 import { Decimal } from "./decimal.ts";
 import { LexqError, type Attempt } from "./errors.ts";
 import { encodeBody } from "./json.ts";
-import { MAX_ATTEMPTS, backoff, inProgressWait, rateLimitWait } from "./retry.ts";
+import { backoff, keyInUseWait, rateLimitWait } from "./retry.ts";
 import type {
   ClientOptions,
   DecisionResult,
@@ -16,19 +17,6 @@ import type {
   Facts,
   FallbackResult,
 } from "./types.ts";
-
-export const DEFAULT_BASE_URL = "https://api.lexq.io";
-
-/** The deadline for a call, in milliseconds. */
-export const DEFAULT_TIMEOUT_MS = 15_000;
-
-/**
- * The timeout for one attempt, in milliseconds. A decision can take seconds when LexQ is
- * busy. Cutting an attempt off does not stop the decision, which is still billed, and a
- * retry with that key gets `I-002` while the decision runs and for up to a minute after
- * it fails.
- */
-export const DEFAULT_ATTEMPT_TIMEOUT_MS = 10_000;
 
 // The longest delay a Node.js timer accepts. A longer one fires after 1 ms instead.
 const MAX_TIMER_MS = 2_147_483_647;
@@ -75,9 +63,9 @@ export class LexqClient {
       throw new TypeError("apiKey must be a LexQ API key: printable ASCII with no spaces");
     }
     this.#apiKey = options.apiKey;
-    this.#endpoint = endpoint(options.baseUrl ?? DEFAULT_BASE_URL);
-    this.#timeoutMs = milliseconds("timeoutMs", options.timeoutMs) ?? DEFAULT_TIMEOUT_MS;
-    this.#attemptTimeoutMs = milliseconds("attemptTimeoutMs", options.attemptTimeoutMs) ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
+    this.#endpoint = endpoint(options.baseUrl ?? BASE_URL);
+    this.#timeoutMs = milliseconds("timeoutMs", options.timeoutMs) ?? DEADLINE_MS;
+    this.#attemptTimeoutMs = milliseconds("attemptTimeoutMs", options.attemptTimeoutMs) ?? ATTEMPT_TIMEOUT_MS;
     this.#retry = flag("retry", options.retry) ?? true;
     this.#breaker = breaker(options.breaker);
   }
@@ -87,8 +75,10 @@ export class LexqClient {
    * `POST /api/v1/execution/groups/{groupId}`.
    *
    * Resolves with LexQ's decision, or with the fallback's value and the reason it was
-   * needed. It rejects only when the fallback throws, or before sending anything when
-   * the fallback is missing or an option has the wrong type or range.
+   * needed. It rejects in three cases: the fallback throws; the fallback is missing or an
+   * argument or option has the wrong type or range, which it reports before sending
+   * anything; or a getter, a `toJSON` method, or a proxy in the facts or contexts throws
+   * something other than a `TypeError`.
    */
   async execute<T>(groupId: string, options: ExecuteOptions<T>): Promise<ExecuteResult<T>> {
     if (typeof groupId !== "string" || groupId === "") {
@@ -96,6 +86,9 @@ export class LexqClient {
     }
     if (groupId === "." || groupId === "..") {
       throw new TypeError(`groupId cannot be "${groupId}": in a URL it moves the request to another path`);
+    }
+    if (!groupId.isWellFormed()) {
+      throw new TypeError("groupId holds an unpaired surrogate, which a URL cannot carry");
     }
     if (typeof options !== "object" || options === null) {
       throw new TypeError("execute needs an options object with facts and a fallback");
@@ -218,13 +211,30 @@ export class LexqClient {
   }
 }
 
-/** How long to wait before the next attempt, or undefined when the outcome is not retried. */
+/**
+ * How long to wait before the next attempt, or undefined when the outcome is not retried.
+ * A code decides before the status does, because LexQ may move a code to another status.
+ */
 function waitBeforeRetry(outcome: AttemptOutcome, failedAttempts: number): number | undefined {
   if (outcome.kind === "timeout" || outcome.kind === "connection") {
     return backoff(failedAttempts);
   }
   if (outcome.kind !== "response") {
     return undefined;
+  }
+  switch (outcome.errorCode) {
+    case "I-002":
+      // Another request with this key started less than a minute ago, and it is still running
+      // or failed without freeing the key. Once a running request succeeds, a retry gets its
+      // decision.
+      return keyInUseWait();
+    case "I-001":
+      // LexQ holds a successful decision for this key, made for a different request.
+    case "B-008":
+      // The monthly execution quota cannot cover the call.
+    case "P-003":
+      // An action of a matched rule failed, and running the request again fails the same way.
+      return undefined;
   }
   switch (outcome.status) {
     case 502:
@@ -234,19 +244,20 @@ function waitBeforeRetry(outcome: AttemptOutcome, failedAttempts: number): numbe
     case 429:
       // A request rejected with 429 did not use its key.
       return rateLimitWait(outcome.retryAfter, Date.now());
-    case 409:
-      // I-002: a request with this key is still running, or failed less than a minute ago.
-      // Once a running request succeeds, a retry gets its decision.
-      // I-001: the key is spent, and only a new key works.
-      return outcome.errorCode === "I-002" ? inProgressWait() : undefined;
     default:
       return undefined;
   }
 }
 
-/** A call adds one to the breaker when LexQ could not be reached or answered with a 5xx. */
+/**
+ * A call adds one to the breaker when LexQ could not be reached or answered with a 5xx. A 5xx
+ * that carries `P-003` does not add one: LexQ answered, and one rule's action failed.
+ */
 function countsAgainstBreaker(error: LexqError): boolean {
-  return error.reason !== "response" || (error.status !== undefined && error.status >= 500);
+  if (error.reason !== "response") {
+    return true;
+  }
+  return error.status !== undefined && error.status >= 500 && error.errorCode !== "P-003";
 }
 
 /**
@@ -410,7 +421,7 @@ function breaker(option: ClientOptions["breaker"]): CircuitBreaker | undefined {
     return undefined;
   }
   if (option === undefined) {
-    return new CircuitBreaker(DEFAULT_THRESHOLD, DEFAULT_COOLDOWN_MS);
+    return new CircuitBreaker(BREAKER_THRESHOLD, BREAKER_COOLDOWN_MS);
   }
   if (typeof option !== "object" || option === null) {
     throw new TypeError("breaker must be false, or an object with threshold and cooldownMs");
@@ -420,8 +431,8 @@ function breaker(option: ClientOptions["breaker"]): CircuitBreaker | undefined {
     throw new TypeError("breaker.threshold must be a whole number of calls, 1 or more");
   }
   return new CircuitBreaker(
-    threshold ?? DEFAULT_THRESHOLD,
-    milliseconds("breaker.cooldownMs", option.cooldownMs) ?? DEFAULT_COOLDOWN_MS,
+    threshold ?? BREAKER_THRESHOLD,
+    milliseconds("breaker.cooldownMs", option.cooldownMs) ?? BREAKER_COOLDOWN_MS,
   );
 }
 

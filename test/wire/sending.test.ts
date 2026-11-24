@@ -1,9 +1,10 @@
-// CONTRACT.md, Wire Contract: sending a request.
+// spec/SPEC.md, Wire: sending a request.
 import assert from "node:assert/strict";
 import { inspect } from "node:util";
 import { test } from "node:test";
 import { LexqClient } from "../../src/index.ts";
 import {
+  DECISION_DATA,
   TEST_API_KEY,
   closedPort,
   clientFor,
@@ -13,6 +14,21 @@ import {
   reply,
   startFakeLexq,
 } from "../support/fake-lexq.ts";
+import { spec } from "../support/spec.ts";
+
+test("without baseUrl, the client calls the base URL in spec/values.json", async (t) => {
+  const urls: string[] = [];
+  // fetch is replaced for this test only, so nothing reaches the network.
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+    urls.push(String(input));
+    return new Response(`{"result":"SUCCESS","data":${DECISION_DATA}}`, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  decisionOf(await new LexqClient({ apiKey: TEST_API_KEY }).execute("group-1", { facts: {}, fallback: fallbackValue }));
+  assert.deepEqual(urls, [`${spec.defaults.baseUrl}/api/v1/execution/groups/group-1`]);
+});
 
 test("the request is a JSON POST to the group, with the key in x-api-key and no Authorization", async (t) => {
   const lexq = await startFakeLexq(reply.decision());

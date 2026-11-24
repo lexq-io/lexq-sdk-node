@@ -1,3 +1,4 @@
 @AGENTS.md
+@spec/SPEC.md
 @CONTRACT.md
 @CONTRIBUTING.md

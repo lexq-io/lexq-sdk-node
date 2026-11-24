@@ -1,19 +1,11 @@
+import { MAX_ERROR_CODE_LENGTH, MAX_MESSAGE_LENGTH, MAX_RESPONSE_BYTES } from "./contract.ts";
 import { Decimal } from "./decimal.ts";
 import { decodeBody } from "./json.ts";
 import { cut, spaced } from "./text.ts";
 
-/**
- * The largest response body the client reads, in bytes. A larger body ends the call with
- * the fallback, even when it carries a decision, instead of holding it all in memory.
- */
-export const MAX_BODY_BYTES = 16 * 1024 * 1024;
-
-/** The longest part of LexQ's message an error carries. LexQ's messages are far shorter. */
-export const MAX_MESSAGE_LENGTH = 1000;
-
 // LexQ's codes look like P-015 or ACT-033. A value that is not a short token, such as
 // text with a line break, is not kept as a code.
-const ERROR_CODE = /^[A-Za-z0-9_-]{1,32}$/;
+const ERROR_CODE = new RegExp(`^[A-Za-z0-9_-]{1,${MAX_ERROR_CODE_LENGTH}}$`);
 
 /** What one attempt came back with. */
 export type AttemptOutcome =
@@ -67,9 +59,13 @@ export async function sendAttempt(request: PreparedRequest, timeoutMs: number): 
   return classify(status, text, retryAfter);
 }
 
-/** The body as text, or undefined when it is larger than MAX_BODY_BYTES. */
+/**
+ * The body as text, or undefined when it is larger than MAX_RESPONSE_BYTES. A larger body
+ * makes the attempt a failure that keeps its status, even when it carries a decision, so the
+ * client never holds it all in memory.
+ */
 async function readBody(response: Response): Promise<string | undefined> {
-  if (Number(response.headers.get("content-length")) > MAX_BODY_BYTES) {
+  if (Number(response.headers.get("content-length")) > MAX_RESPONSE_BYTES) {
     await response.body?.cancel();
     return undefined;
   }
@@ -86,7 +82,7 @@ async function readBody(response: Response): Promise<string | undefined> {
       return text + decoder.decode();
     }
     size += chunk.value.byteLength;
-    if (size > MAX_BODY_BYTES) {
+    if (size > MAX_RESPONSE_BYTES) {
       await reader.cancel();
       return undefined;
     }
@@ -106,7 +102,7 @@ function classify(status: number, text: string | undefined, retryAfter: string |
     return failure(undefined, `LexQ answered ${status}, a redirect, which the client does not follow`);
   }
   if (text === undefined) {
-    return failure(undefined, `LexQ answered ${status} with a body larger than ${MAX_BODY_BYTES} bytes`);
+    return failure(undefined, `LexQ answered ${status} with a body larger than ${MAX_RESPONSE_BYTES} bytes`);
   }
   let body: unknown;
   try {

@@ -1,9 +1,8 @@
 // Safeguard 2: a failed attempt is sent again with the same Idempotency-Key and the same
-// bytes, for the outcomes in CONTRACT.md's retry table and no others.
+// bytes, for the outcomes in the retry table of spec/SPEC.md and no others.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Decimal } from "../../src/index.ts";
-import { IN_PROGRESS_MS, MAX_ATTEMPTS, RATE_LIMITED_MS } from "../../src/retry.ts";
 import {
   clientFor,
   decisionOf,
@@ -13,6 +12,9 @@ import {
   startFakeLexq,
   type Responder,
 } from "../support/fake-lexq.ts";
+import { spec } from "../support/spec.ts";
+
+const { keyInUseWait, maxAttempts, rateLimitWait } = spec.defaults;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -99,7 +101,7 @@ test("409 with I-002 is retried after a longer wait than a backoff", async (t) =
   decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, timeoutMs: 3000, fallback: fallbackValue }));
   const [first, second] = lexq.received;
   assert.ok(first && second);
-  assert.ok(second.at - first.at >= IN_PROGRESS_MS - 50, `waited ${second.at - first.at} ms`);
+  assert.ok(second.at - first.at >= keyInUseWait.minMs - 50, `waited ${second.at - first.at} ms`);
 });
 
 test("429 is retried after Retry-After", async (t) => {
@@ -117,7 +119,7 @@ test("429 without Retry-After is retried after a longer wait than a backoff", as
   decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, timeoutMs: 3000, fallback: fallbackValue }));
   const [first, second] = lexq.received;
   assert.ok(first && second);
-  assert.ok(second.at - first.at >= RATE_LIMITED_MS - 50, `waited ${second.at - first.at} ms`);
+  assert.ok(second.at - first.at >= rateLimitWait.minMs - 50, `waited ${second.at - first.at} ms`);
 });
 
 test("429 is not retried when Retry-After asks for more time than the deadline has left", async (t) => {
@@ -153,14 +155,45 @@ for (const [status, errorCode] of notRetried) {
   });
 }
 
+// A row that names a code applies to that code whatever the status, and wins over a row that
+// names only a status. 503 alone is retried with a backoff.
+for (const errorCode of ["I-001", "B-008", "P-003"]) {
+  test(`503 with ${errorCode} is never retried, because the code decides before the status`, async (t) => {
+    const lexq = await startFakeLexq(reply.error(503, errorCode), reply.decision());
+    t.after(() => lexq.close());
+    const error = lexqErrorOf(await clientFor(lexq).execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
+    assert.equal(error.status, 503);
+    assert.equal(error.errorCode, errorCode);
+    assert.equal(lexq.received.length, 1);
+  });
+}
+
+test("503 with a code the retry table does not name is retried by its status", async (t) => {
+  const lexq = await startFakeLexq(reply.error(503, "C-005"), reply.decision());
+  t.after(() => lexq.close());
+  decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, timeoutMs: 2000, fallback: fallbackValue }));
+  assert.equal(lexq.received.length, 2);
+});
+
+for (const status of [500, 503]) {
+  test(`${status} with I-002 is retried after the wait for I-002, because the code decides before the status`, async (t) => {
+    const lexq = await startFakeLexq(reply.error(status, "I-002"), reply.decision());
+    t.after(() => lexq.close());
+    decisionOf(await clientFor(lexq).execute("group-1", { facts: {}, timeoutMs: 3000, fallback: fallbackValue }));
+    const [first, second] = lexq.received;
+    assert.ok(first && second);
+    assert.ok(second.at - first.at >= keyInUseWait.minMs - 50, `waited ${second.at - first.at} ms`);
+  });
+}
+
 test("retries stop after the attempt limit even when the deadline has time left", async (t) => {
   const lexq = await startFakeLexq(reply.unavailable());
   t.after(() => lexq.close());
   const error = lexqErrorOf(
     await clientFor(lexq, { breaker: false }).execute("group-1", { facts: {}, timeoutMs: 10_000, fallback: fallbackValue }),
   );
-  assert.equal(lexq.received.length, MAX_ATTEMPTS);
-  assert.equal(error.attempts.length, MAX_ATTEMPTS);
+  assert.equal(lexq.received.length, maxAttempts);
+  assert.equal(error.attempts.length, maxAttempts);
   assert.equal(error.status, 503);
 });
 
