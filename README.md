@@ -27,8 +27,14 @@ npm install @lexq/sdk
 The package supports Node.js 22.12 or later. It is an ES module, and CommonJS code can
 load it with `require()` as well.
 
-Run the client on a server. It refuses to start in a browser, where the API key would
-reach every visitor.
+Run the client on a server. It refuses to start in a web page, in a worker that a web
+page starts, and in a React Native app, where the API key would reach everyone who uses
+the page or the app. Keep it out of any other app that runs on its users' own devices,
+such as a desktop app or a mobile app built with neither React Native nor a web view: the
+key would reach those users too, and the client cannot always tell such an app from a
+server. In [CONTRACT.md](CONTRACT.md#not-followed-yet), the item "Where the client starts"
+lists the places where the client starts though it should refuse, and the servers where it
+refuses though it should start.
 
 ```ts
 import { LexqClient } from "@lexq/sdk";

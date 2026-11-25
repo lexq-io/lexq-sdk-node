@@ -19,10 +19,10 @@ in the LexQ SDK specification, copied in [spec/SPEC.md](spec/SPEC.md), and
   package moves to another version of the specification, in one pull request that also
   names that version in `CONTRACT.md` and either changes the code and the tests to match
   or lists in `CONTRACT.md` what the code does not do yet. `npm test` fails when `spec/`
-  holds anything but the three files, when a copy's SHA-256 differs from the lock, or
-  when `CONTRACT.md` names a version other than the lock's, names the lock's more than
-  once, or leaves it out. Any string written like `v1.2.3` counts as a version, even one
-  meant as a tag of this package.
+  does not hold exactly the three files, when one of them is not a regular file, when a
+  copy's SHA-256 differs from the lock, or when `CONTRACT.md` names a version other than
+  the lock's, names the lock's more than once, or leaves it out. Any string written like
+  `v1.2.3` counts as a version, even one meant as a tag of this package.
 - `spec/values.json` holds the values the specification sets: LexQ's enums and
   constants, the error codes the specification names, and the defaults.
   `scripts/gen-contract.mjs` writes `src/contract.ts` from it, and the tests take their

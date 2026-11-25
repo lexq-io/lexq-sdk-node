@@ -13,9 +13,15 @@ Until an item is closed, the client does what the item says instead.
 - **Cancellation** ([Cancellation](spec/SPEC.md#cancellation)): a call cannot be canceled.
   `execute` takes no `AbortSignal`.
 - **Where the client starts**
-  ([Sending a request](spec/SPEC.md#sending-a-request)): the client refuses to start only
-  where `window` and `document` both exist. It starts in a web page's workers and in a
-  mobile app. The documentation does not yet say to keep it out of desktop apps.
+  ([Sending a request](spec/SPEC.md#sending-a-request)):
+  - The client recognizes a mobile app in two ways only: a React Native app by
+    `navigator.product`, and an app built on a web view by the checks for a web page and its
+    workers. It can start in a mobile app built with neither React Native nor a web view.
+  - In a worker that a web page starts, the client starts when `process.versions.node` is a
+    string there, because a Node.js worker that the `web-worker` package starts also has
+    `importScripts`, as a web page's workers do, and the client must start in that worker.
+  - The client refuses to start on a server where `window` and `document` both exist, for
+    example because code defines them on the global object to render web pages.
 - **`Retry-After`** ([Defaults](spec/SPEC.md#defaults)): the client reads a whole number of
   seconds and the IMF-fixdate form, such as `Tue, 10 Nov 2026 00:00:05 GMT`. The RFC 850
   and asctime forms count as no `Retry-After`.
@@ -71,7 +77,7 @@ Until an item is closed, the client does what the item says instead.
 | The exact decimal type, and how to compare two numbers by value | `Decimal`, which keeps in `text` the number exactly as LexQ wrote it. It has no comparison of its own. To compare two numbers by value, pass each one's `toString()` to a decimal library: the text keeps the scale, so `20` and `20.0` are different text |
 | The text it writes for a number that carries no text of its own | A JavaScript number goes out as `String(value)` writes it, so `0.0000001` goes out as `1e-7`, `1e21` as `1e+21`, and `-0` as `0`. A bigint goes out as its digits, and a `Decimal` as its `text` |
 | The cancellation mechanism | None yet. See [Not followed yet](#not-followed-yet) |
-| Where it refuses to start | The constructor throws where `window` and `document` both exist, as in a web page |
+| Where it refuses to start | The constructor throws where `window` and `document` both exist, as in a web page; where `importScripts` is a function but `process.versions.node` is not a string, as in a worker that a web page starts; and where `navigator.product` is `"ReactNative"`, as in a React Native app |
 | How a field LexQ adds later reaches the caller | As a property of the decision, which holds every field in LexQ's `data` with `source` added. The types declare only the fields this release knows |
 | Which collections it refuses because it cannot rely on their order | Every object in the facts or contexts that is neither a plain object nor an array, such as a `Set` or a `Map`, fails the call as `invalid_input`, unless it has a `toJSON` method, whose result goes out instead |
 | Which key names could change how its own objects behave or which types its parser creates, and how it keeps them ordinary keys | `__proto__` and `toJSON`. The parser and the decision define every key LexQ sends as an own property, so `__proto__` never sets a prototype. The request is written from each object's own enumerable string keys. A `toJSON` method on an object in the facts or contexts is called, as `JSON.stringify` does, and a `toJSON` key whose value is not a function goes out as an ordinary key |
