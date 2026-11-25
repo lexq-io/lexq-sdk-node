@@ -47,8 +47,6 @@ Until an item is closed, the client does what the item says instead.
   and any value through, but the type definitions declare `RuleAction.type`,
   `DecisionTrace.status`, and `DecisionTrace.reasonCode` as `string`, without `null`.
 - **Documentation:**
-  - Where it describes retries, it does not yet say what Fail-open does to them
-    ([Retry with the same `Idempotency-Key` and the same bytes](spec/SPEC.md#2-retry-with-the-same-idempotency-key-and-the-same-bytes)).
   - It does not yet say to make `trafficKey` a surrogate key or a keyed hash, never an
     email address or a phone number, or to hash a non-ASCII ID before using it as an
     idempotency key ([Sending a request](spec/SPEC.md#sending-a-request)).
