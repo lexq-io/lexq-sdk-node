@@ -91,17 +91,109 @@ test("trafficKey stays where the caller put it", async (t) => {
   assert.equal(lexq.received[1]?.body, '{"facts":{"trafficKey":"user-7"}}');
 });
 
-test("the constructor throws where window and document exist", () => {
-  const scope = globalThis as Record<string, unknown>;
-  scope.window = {};
-  scope.document = {};
+/**
+ * Runs `body`, which must be synchronous, with the given globals defined, and puts back what
+ * was there before when it returns or throws.
+ */
+function withGlobals(globals: Readonly<Record<string, unknown>>, body: () => undefined): void {
+  const before = new Map<string, PropertyDescriptor | undefined>();
   try {
-    assert.throws(() => new LexqClient({ apiKey: TEST_API_KEY }), /server only/);
+    for (const [name, value] of Object.entries(globals)) {
+      before.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+      Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+    }
+    body();
   } finally {
-    delete scope.window;
-    delete scope.document;
+    for (const [name, descriptor] of before) {
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(globalThis, name);
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
   }
-  assert.doesNotThrow(() => new LexqClient({ apiKey: TEST_API_KEY }));
+}
+
+const startClient = () => new LexqClient({ apiKey: TEST_API_KEY });
+
+test("the constructor throws in a web page, where window and document exist", () => {
+  withGlobals({ window: {}, document: {} }, () => {
+    assert.throws(startClient, /^Error: LexqClient runs on a server only: in a web page, the API key would reach every visitor$/);
+  });
+  assert.doesNotThrow(startClient);
+});
+
+test("the constructor does not throw where document exists without window", () => {
+  withGlobals({ document: {} }, () => {
+    assert.doesNotThrow(startClient);
+  });
+});
+
+test("the constructor throws in a worker that a web page starts, where importScripts is a function and process is undefined", () => {
+  withGlobals({ self: globalThis, importScripts() {}, process: undefined }, () => {
+    assert.throws(startClient, /^Error: LexqClient runs on a server only: in a worker that a web page starts, the API key would reach every visitor to the page$/);
+  });
+  assert.doesNotThrow(startClient);
+});
+
+test("the constructor throws in a worker that a web page starts, where process has no versions.node, as in the process package's browser.js", () => {
+  const browserProcess = { title: "browser", browser: true, env: {}, argv: [], version: "", versions: {} };
+  withGlobals({ self: globalThis, importScripts() {}, process: browserProcess }, () => {
+    assert.throws(startClient, /^Error: LexqClient runs on a server only: in a worker that a web page starts, the API key would reach every visitor to the page$/);
+  });
+  assert.doesNotThrow(startClient);
+});
+
+test("the constructor does not throw in a worker with importScripts and process.versions.node, as in a worker that the web-worker package starts in Node.js", () => {
+  withGlobals({ self: globalThis, importScripts() {} }, () => {
+    assert.equal(typeof process.versions.node, "string");
+    assert.doesNotThrow(startClient);
+  });
+});
+
+test("the constructor throws in a React Native app, where navigator.product is ReactNative", () => {
+  // React Native also sets window and self to the global object when they are undefined, and,
+  // when process is undefined, process to an object that holds only env. Its JavaScript defines
+  // no document.
+  const reactNativeProcess = { env: { NODE_ENV: "production" } };
+  withGlobals({ window: globalThis, self: globalThis, process: reactNativeProcess, navigator: { product: "ReactNative" } }, () => {
+    assert.throws(startClient, /^Error: LexqClient runs on a server only: in a React Native app, the API key would reach every user of the app$/);
+  });
+  assert.doesNotThrow(startClient);
+});
+
+test("the constructor does not throw where navigator.product is not ReactNative", () => {
+  withGlobals({ navigator: { product: "Gecko" } }, () => {
+    assert.doesNotThrow(startClient);
+  });
+});
+
+test("the constructor does not throw in a worker global scope without importScripts, as in Deno's workers and Cloudflare Workers", () => {
+  // Symbol.hasInstance makes every value an instance of both classes, so an instanceof check would
+  // refuse here, as it would in a Deno worker, whose global object is an instance of WorkerGlobalScope.
+  // The second run hides process, so that process.versions.node is not what lets the client start.
+  class WorkerGlobalScope {
+    static [Symbol.hasInstance](_value: unknown): boolean {
+      return true;
+    }
+  }
+  class ServiceWorkerGlobalScope extends WorkerGlobalScope {}
+  withGlobals({ self: globalThis, WorkerGlobalScope, ServiceWorkerGlobalScope }, () => {
+    assert.ok(globalThis instanceof WorkerGlobalScope);
+    assert.doesNotThrow(startClient);
+  });
+  withGlobals({ self: globalThis, WorkerGlobalScope, ServiceWorkerGlobalScope, process: undefined }, () => {
+    assert.doesNotThrow(startClient);
+  });
+});
+
+test("the constructor does not throw where importScripts, process, and navigator are defined as undefined", () => {
+  // The edge-runtime package defines none of the three names. Here each is defined with the
+  // value undefined: that hides Node.js's own process and navigator, and a check that looked
+  // only for the name importScripts would refuse here.
+  withGlobals({ self: globalThis, importScripts: undefined, process: undefined, navigator: undefined }, () => {
+    assert.doesNotThrow(startClient);
+  });
 });
 
 test("plain http is accepted only for localhost, 127.0.0.1, and [::1]", () => {

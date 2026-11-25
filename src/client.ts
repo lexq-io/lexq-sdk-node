@@ -49,12 +49,16 @@ export class LexqClient {
   readonly #breaker: CircuitBreaker | undefined;
 
   /**
-   * @throws {Error} In a browser, where the API key would reach every visitor.
+   * @throws {Error} In a web page, in a worker that a web page starts, and in a React Native
+   * app, where the API key would reach everyone who uses the page or the app. The constructor
+   * also throws on a server where `window` and `document` both exist, and it does not throw in
+   * a worker where `process.versions.node` is a string, even in one that a web page starts.
    * @throws {TypeError} When an option has the wrong type or range.
    */
   constructor(options: ClientOptions) {
-    if ("window" in globalThis && "document" in globalThis) {
-      throw new Error("LexqClient runs on a server only: in a browser, the API key would reach every visitor");
+    const exposure = keyExposure();
+    if (exposure !== undefined) {
+      throw new Error(`LexqClient runs on a server only: ${exposure}`);
     }
     if (typeof options !== "object" || options === null) {
       throw new TypeError("LexqClient needs an options object with an apiKey");
@@ -392,6 +396,34 @@ function traces<T>(value: unknown): readonly T[] | undefined {
 async function settle<T>(fallback: ExecuteOptions<T>["fallback"], error: LexqError): Promise<FallbackResult<T>> {
   // The deadline covers the attempts to reach LexQ, not the fallback.
   return { source: "fallback", value: await fallback(error), error };
+}
+
+/**
+ * Why the client refuses to start here, or undefined. Each reason names a place where the
+ * API key would reach the people who use the page or the app.
+ */
+function keyExposure(): string | undefined {
+  const scope = globalThis as Record<string, unknown>;
+  if ("window" in scope && "document" in scope) {
+    return "in a web page, the API key would reach every visitor";
+  }
+  // Every worker that a web page starts has importScripts, module workers included. The client
+  // still starts in a worker where process.versions.node is also a string, because a worker
+  // that the web-worker package starts in Node.js has importScripts and a string
+  // process.versions.node, and the client must start there. This check does not look at the
+  // global object's class, because some server runtimes use the class names that browsers use:
+  // the constructor of a Deno worker's global object is DedicatedWorkerGlobalScope, and that of
+  // a Cloudflare Worker's is ServiceWorkerGlobalScope.
+  const node = (scope.process as { readonly versions?: { readonly node?: unknown } } | null | undefined)?.versions?.node;
+  if (typeof scope.importScripts === "function" && typeof node !== "string") {
+    return "in a worker that a web page starts, the API key would reach every visitor to the page";
+  }
+  // React Native sets navigator.product when the app starts.
+  const product = (scope.navigator as { readonly product?: unknown } | null | undefined)?.product;
+  if (product === "ReactNative") {
+    return "in a React Native app, the API key would reach every user of the app";
+  }
+  return undefined;
 }
 
 function endpoint(baseUrl: unknown): string {

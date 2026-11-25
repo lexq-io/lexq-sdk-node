@@ -34,7 +34,7 @@ export type InputFacts = { readonly [key: string]: InputFactValue | undefined };
 export interface ClientOptions {
   /**
    * A LexQ API key, sent in the `x-api-key` header. Any scope can execute, including the
-   * default Execute only. Keep it on the server: the client refuses to run in a browser.
+   * default Execute only. Keep it on the server.
    */
   readonly apiKey: string;
   /**
