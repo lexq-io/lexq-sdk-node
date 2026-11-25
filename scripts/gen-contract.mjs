@@ -1,30 +1,26 @@
 #!/usr/bin/env node
 /**
- * Writes src/contract.ts and contracts/lexq-manifest.sdk.json from spec/values.json, the
- * values of the LexQ SDK specification version that spec/spec.lock pins.
- *
- * src/contract.ts holds the LexQ constants that CONSTANTS lists and every default in
- * DEFAULTS. contracts/lexq-manifest.sdk.json holds the subset that CONSTANTS and
- * ERROR_CODES list, until a later change removes it.
+ * Writes src/contract.ts from spec/values.json, the values of the LexQ SDK specification
+ * version that spec/spec.lock pins. src/contract.ts holds the LexQ constants that CONSTANTS
+ * lists and every default in DEFAULTS.
  *
  * A name below that spec/values.json lacks, or a default in spec/values.json that DEFAULTS
  * does not list, fails the run. The client would otherwise rely on a value the
  * specification no longer states, or leave out one it now states.
  *
- * Usage: node scripts/gen-contract.mjs           write both files
- *        node scripts/gen-contract.mjs --check   check that both files match spec/values.json
- * Exit:  0 on success, 1 when a value is missing, unknown, or malformed, or a file does
- *        not match.
+ * Usage: node scripts/gen-contract.mjs           write src/contract.ts
+ *        node scripts/gen-contract.mjs --check   check that src/contract.ts matches spec/values.json
+ * Exit:  0 on success, 1 when a value is missing, unknown, or malformed, or src/contract.ts
+ *        does not match.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const ROOT = new URL("../", import.meta.url);
 const VALUES = new URL("spec/values.json", ROOT);
-const SUBSET = new URL("contracts/lexq-manifest.sdk.json", ROOT);
 const SOURCE = new URL("src/contract.ts", ROOT);
 
 /**
- * The LexQ constants both files carry, by the name LexQ gives them, and what each one is.
+ * The LexQ constants src/contract.ts carries, by the name LexQ gives them, and what each one is.
  * `<C-012>` in a description becomes that code with the status spec/values.json gives it.
  */
 const CONSTANTS = [
@@ -32,9 +28,6 @@ const CONSTANTS = [
   ["IDEMPOTENCY_KEY_MAX_LENGTH", "The longest `Idempotency-Key` LexQ accepts, in characters. LexQ answers a longer key with `<I-003>`."],
   ["REPLAY_RETENTION_HOURS", "How long a successful decision stays available to a repeat with the same `Idempotency-Key`, in hours. A later repeat runs the decision again and is billed again."],
 ];
-
-/** The error codes contracts/lexq-manifest.sdk.json carries, with the status LexQ gives each one. */
-const ERROR_CODES = ["I-001", "I-002", "B-008"];
 
 /** A code in a CONSTANTS description, written `<C-012>`. */
 const CODE_IN_DOC = /<([A-Z]{1,4}-\d{3})>/g;
@@ -90,7 +83,7 @@ function isRange(value) {
   );
 }
 
-/** The values both files need, checked for presence and form. */
+/** The values src/contract.ts needs, checked for presence and form. */
 function read() {
   if (!existsSync(VALUES)) {
     fail("spec/values.json not found", ["It belongs in spec/ with spec/SPEC.md and spec/spec.lock. CONTRIBUTING.md says how spec/ changes."]);
@@ -102,7 +95,6 @@ function read() {
   const listed = new Set(DEFAULTS.map(([key]) => key));
   const problems = [
     ...CONSTANTS.filter(([name]) => !isCount(constants[name])).map(([name]) => `constant ${name} is missing or not a positive integer`),
-    ...ERROR_CODES.filter((code) => !Number.isInteger(statuses.get(code))).map((code) => `error code ${code} is missing or its status is not an integer`),
     ...CONSTANTS.flatMap(([name, doc]) =>
       [...doc.matchAll(CODE_IN_DOC)]
         .filter(([, code]) => !Number.isInteger(statuses.get(code)))
@@ -133,16 +125,6 @@ function read() {
   return { constants, statuses, defaults };
 }
 
-function renderSubset({ constants, statuses }) {
-  const subset = {
-    schemaVersion: 2,
-    note: "Subset of LexQ's contract manifest limited to CONSTANTS and ERROR_CODES in scripts/gen-contract.mjs. Generated; do not edit.",
-    constants: Object.fromEntries(CONSTANTS.map(([name]) => [name, constants[name]])),
-    errorCodes: ERROR_CODES.map((code) => ({ code, httpStatus: statuses.get(code) })),
-  };
-  return `${JSON.stringify(subset, null, 2)}\n`;
-}
-
 function literal(kind, value) {
   if (kind === "range") {
     return `{ minMs: ${value.minMs}, maxMs: ${value.maxMs} }`;
@@ -168,19 +150,11 @@ function renderSource({ constants, statuses, defaults }) {
 
 const values = read();
 if (process.argv.includes("--check")) {
-  const problems = [];
-  if (!existsSync(SUBSET) || readFileSync(SUBSET, "utf8") !== renderSubset(values)) {
-    problems.push("contracts/lexq-manifest.sdk.json does not match spec/values.json");
-  }
   if (!existsSync(SOURCE) || readFileSync(SOURCE, "utf8") !== renderSource(values)) {
-    problems.push("src/contract.ts does not match spec/values.json");
+    fail("src/contract.ts does not match spec/values.json", ["It was changed by hand or not written again. Run node scripts/gen-contract.mjs to write it."]);
   }
-  if (problems.length > 0) {
-    fail("a file written from spec/values.json was changed by hand or not written again", [...problems, "Run node scripts/gen-contract.mjs to write both."]);
-  }
-  console.log(`✓ src/contract.ts and contracts/lexq-manifest.sdk.json match spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults, ${ERROR_CODES.length} error codes`);
+  console.log(`✓ src/contract.ts matches spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults`);
 } else {
-  writeFileSync(SUBSET, renderSubset(values));
   writeFileSync(SOURCE, renderSource(values));
-  console.log(`✓ wrote src/contract.ts and contracts/lexq-manifest.sdk.json from spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults, ${ERROR_CODES.length} error codes`);
+  console.log(`✓ wrote src/contract.ts from spec/values.json: ${CONSTANTS.length} constants, ${DEFAULTS.length} defaults`);
 }

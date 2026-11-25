@@ -1,6 +1,6 @@
 // spec/values.json holds the values of the specification version this package follows.
-// scripts/gen-contract.mjs writes src/contract.ts and contracts/lexq-manifest.sdk.json from
-// it, and the documentation states the same values.
+// scripts/gen-contract.mjs writes src/contract.ts from it, and the documentation states the
+// same values.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
@@ -16,7 +16,7 @@ async function readProse(path: string): Promise<string> {
   return (await readFile(new URL(path, ROOT), "utf8")).replace(/\s+/g, " ").replace(/ \* /g, " ");
 }
 
-test("src/contract.ts and contracts/lexq-manifest.sdk.json are what scripts/gen-contract.mjs writes from spec/values.json", () => {
+test("src/contract.ts is what scripts/gen-contract.mjs writes from spec/values.json", () => {
   execFileSync(process.execPath, [fileURLToPath(new URL("scripts/gen-contract.mjs", ROOT)), "--check"], { stdio: "pipe" });
 });
 
@@ -56,4 +56,21 @@ test("the documentation gives each code in spec/values.json the status spec/valu
     }
   }
   assert.ok(checked > 0, "the documentation gives no code from spec/values.json a status");
+});
+
+// The client branches on some of LexQ's error codes. Each code that src/ writes in double
+// quotes, as in `case "I-002":` in src/client.ts, must be one that spec/values.json gives a
+// status to, so this test fails when a new version of the specification no longer lists one.
+test("spec/values.json gives a status to every error code src/ writes in double quotes", async () => {
+  const statuses = new Map(spec.errorCodes.map(({ code, httpStatus }) => [code, httpStatus]));
+  const sources = (await readdir(new URL("src/", ROOT))).filter((name) => name.endsWith(".ts"));
+  let checked = 0;
+  for (const name of sources) {
+    for (const match of (await readFile(new URL(`src/${name}`, ROOT), "utf8")).matchAll(/"([A-Z]{1,4}-\d{3})"/g)) {
+      const code = match[1] ?? "";
+      assert.ok(Number.isInteger(statuses.get(code)), `src/${name} names ${code}, and spec/values.json gives it no status`);
+      checked += 1;
+    }
+  }
+  assert.ok(checked > 0, "src/ writes no error code in double quotes");
 });
