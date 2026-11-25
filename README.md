@@ -9,7 +9,11 @@ returns the decision. This package makes that call, with four safeguards:
 - Every call has a timeout that covers its retries.
 - An attempt that times out or hits a temporary error is sent again with the same
   `Idempotency-Key`. If the first attempt succeeded, LexQ returns its result instead
-  of running the decision again.
+  of running the decision again. In an organization that uses
+  [Fail-open](https://docs.lexq.io/glossary#billing-and-infrastructure), LexQ keeps
+  running calls when an outage stops it from checking whether another request holds the
+  key. A retry that arrives then, while an earlier attempt is still running or after
+  that attempt failed, runs the decision again and is billed again.
 - A circuit breaker stops calling LexQ for a while when calls keep failing.
 - Every call requires a fallback: the decision your service uses when the call fails.
 
@@ -135,9 +139,11 @@ node scripts/gen-contract.mjs
 ## Maintenance
 
 I'm Sanghyun Park, and I maintain this package. I write most of it with AI coding
-tools, mainly Claude Code. I decide each change, read every commit and diff before it
-is pushed, and merge every pull request myself. The rules for changing the package
-are in [CONTRIBUTING.md](CONTRIBUTING.md).
+tools, mainly Claude Code. I decide each change, read every commit and diff before I
+push it, and merge every pull request myself. Dependabot pushes its own branches to
+propose new versions of the CI actions and of the packages in `package.json`, and I
+read those changes before I merge them. The rules for changing the package are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security
 
