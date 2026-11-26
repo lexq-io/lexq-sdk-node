@@ -29,8 +29,6 @@ in the LexQ SDK specification, copied in [spec/SPEC.md](spec/SPEC.md), and
   expected values from it. `npm test` also fails when `src/contract.ts` was changed by
   hand, or when the documentation gives a default, a LexQ constant, or an error status
   that differs from `spec/values.json`.
-- `contracts/lexq-manifest.sdk.json` holds a subset of those values. The same script
-  writes it, and a later change removes it.
 - Add a runtime dependency only with a reason in the pull request. Every dependency
   ships into every customer's server.
 - Errors and logging follow [Errors](spec/SPEC.md#errors) in the specification.
